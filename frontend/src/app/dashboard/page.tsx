@@ -1,3 +1,5 @@
+"use client";
+
 import { StatusBar } from "@/components/dashboard/StatusBar";
 import { KpiStrip } from "@/components/dashboard/KpiStrip";
 import { WatchlistTable } from "@/components/dashboard/WatchlistTable";
@@ -5,6 +7,7 @@ import { ThreatMap } from "@/components/dashboard/ThreatMap";
 import { IntelPanel } from "@/components/dashboard/IntelPanel";
 import { AlertFeed } from "@/components/dashboard/AlertFeed";
 import { AnalyticsGrid } from "@/components/dashboard/AnalyticsGrid";
+import { useDashboardData } from "@/lib/hooks/useDashboardData";
 
 function SubScoresCard() {
   const bars = [
@@ -76,18 +79,19 @@ function SubScoresCard() {
 }
 
 export default function DashboardPage() {
+  const { data, loading } = useDashboardData();
+
   return (
     <div className="flex flex-col min-h-full min-w-0 gap-3">
-      {/* Full-width header bar — same shell as ticker, edge to edge */}
       <StatusBar />
 
       <div className="flex flex-col gap-3 flex-1 min-h-0 py-3" style={{ paddingLeft: 12, paddingRight: 12 }}>
         <div>
-          <KpiStrip />
+          <KpiStrip data={data} loading={loading} />
         </div>
 
         <div className="grid grid-cols-2 gap-3" style={{ height: 400 }}>
-          <WatchlistTable />
+          <WatchlistTable countries={data.countries} />
           <ThreatMap />
         </div>
 

@@ -206,7 +206,7 @@ function GlobeMap({ onCountrySelect, selectedCode, is3D = false, layers }: Props
         const safeSetPaint = (id: string, prop: string, value: unknown) => {
           if (layerIds.has(id)) {
             try {
-              map.setPaintProperty(id, prop, value);
+              map.setPaintProperty(id, prop as any, value);
             } catch { /* layer type mismatch */ }
           }
         };

@@ -2,6 +2,7 @@
 
 import { AreaChart, Area, ResponsiveContainer } from "recharts";
 import { KPI_SPARKLINE_DATA } from "@/lib/dashboard-data";
+import type { DashboardSummary } from "@/lib/types";
 
 interface KpiCardProps {
   label: string;
@@ -114,14 +115,22 @@ function KpiCard({
   );
 }
 
-export function KpiStrip() {
+interface KpiStripProps {
+  data: DashboardSummary;
+  loading: boolean;
+}
+
+export function KpiStrip({ data, loading }: KpiStripProps) {
+  const gtiDelta = data.globalThreatIndexDelta;
+  const hpDelta = data.highPlusCountriesDelta;
+
   return (
-    <div className="grid grid-cols-6 gap-3">
+    <div className="grid grid-cols-6 gap-3" style={{ opacity: loading ? 0.5 : 1, transition: "opacity 0.3s" }}>
       <KpiCard
         label="Global Threat Index"
-        value={47}
-        delta="+3"
-        deltaUp
+        value={data.globalThreatIndex}
+        delta={gtiDelta !== 0 ? `${gtiDelta > 0 ? "+" : ""}${gtiDelta}` : undefined}
+        deltaUp={gtiDelta > 0}
         sparkData={KPI_SPARKLINE_DATA[0]}
         accentColor="#f59e0b"
         bgColor="#fffbeb"
@@ -129,7 +138,7 @@ export function KpiStrip() {
       />
       <KpiCard
         label="Active Anomalies"
-        value={12}
+        value={data.activeAnomalies}
         sparkData={KPI_SPARKLINE_DATA[1]}
         accentColor="#ef4444"
         bgColor="#fef2f2"
@@ -137,9 +146,9 @@ export function KpiStrip() {
       />
       <KpiCard
         label="HIGH+ Countries"
-        value={17}
-        delta="+2"
-        deltaUp
+        value={data.highPlusCountries}
+        delta={hpDelta !== 0 ? `${hpDelta > 0 ? "+" : ""}${hpDelta}` : undefined}
+        deltaUp={hpDelta > 0}
         sparkData={KPI_SPARKLINE_DATA[2]}
         accentColor="#ef4444"
         bgColor="#fef2f2"
@@ -147,7 +156,7 @@ export function KpiStrip() {
       />
       <KpiCard
         label="Escalation Alerts 24h"
-        value={4}
+        value={data.escalationAlerts24h}
         sparkData={KPI_SPARKLINE_DATA[3]}
         accentColor="#f97316"
         bgColor="#fff7ed"

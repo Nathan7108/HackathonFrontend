@@ -23,5 +23,19 @@ yarn-error.log*
 # Vercel
 .vercel
 
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.db
+venv/
+sentinel/
+venv311/
+sentinel312/
+
+# Data / models (large or local — root level only)
+/data/
+/models/
+
 # Optional: uncomment to keep next-env.d.ts tracked
 # !next-env.d.ts

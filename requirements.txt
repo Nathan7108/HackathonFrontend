@@ -1,0 +1,20 @@
+# Backend + ML — one place. Unpinned so pip can use Python 3.13 wheels.
+numpy
+pandas
+scikit-learn
+xgboost
+joblib
+requests
+httpx
+scipy
+fastapi
+uvicorn
+python-dotenv
+pydantic
+tqdm
+python-dateutil
+openai
+wbgapi
+torch
+transformers
+accelerate

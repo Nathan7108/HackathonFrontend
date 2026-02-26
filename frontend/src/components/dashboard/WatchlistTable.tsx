@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { ACTIVE_COUNTRIES } from "@/lib/placeholder-data";
 import { TOP_ESCALATING, TOP_DEESCALATING } from "@/lib/dashboard-data";
+import { getCountryFlagEmoji } from "@/lib/country-flag";
 import { Sparkline } from "./Sparkline";
+import type { DashboardCountry } from "@/lib/types";
 
 const RISK_COLORS: Record<string, string> = {
   LOW: "#22c55e",
@@ -41,35 +42,28 @@ function LiveBadge() {
   );
 }
 
-// # | Country | Score | Δ30d | Level | Trend | Sentiment | Alert — fixed width, no horizontal scroll
 const COL_TEMPLATE = "20px minmax(0,1fr) 44px 42px 38px 46px 22px 22px";
 
-// Pad to 20 countries for the watchlist (repeat from start if needed)
-function watchlistRows() {
-  const list: typeof ACTIVE_COUNTRIES = [];
-  while (list.length < 20) {
-    list.push(...ACTIVE_COUNTRIES);
-  }
-  return list.slice(0, 20);
+interface WatchlistTableProps {
+  countries: DashboardCountry[];
 }
 
-const WATCHLIST_20 = watchlistRows();
+export function WatchlistTable({ countries }: WatchlistTableProps) {
+  const sorted = [...countries].sort((a, b) => b.riskScore - a.riskScore);
+  const rows = sorted.slice(0, 20);
 
-export function WatchlistTable() {
   return (
     <div className="flex flex-col h-full min-w-0 bg-white rounded-md shadow-[0_1px_3px_rgba(0,0,0,0.06)] overflow-hidden">
-      {/* Header — padding to match rows */}
       <div className="flex items-center justify-between pl-3 pr-3 py-2 border-b border-gray-100 shrink-0">
         <div className="flex items-center gap-2">
           <span className="text-xs uppercase tracking-wider text-gray-500 font-semibold">Watchlist</span>
           <LiveBadge />
           <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 font-medium">
-            {WATCHLIST_20.length} monitored
+            {rows.length} monitored
           </span>
         </div>
       </div>
 
-      {/* Column headers */}
       <div
         className="grid pl-3 pr-3 py-1.5 text-[11px] uppercase tracking-wider text-gray-400 font-semibold border-b border-gray-100 shrink-0"
         style={{ gridTemplateColumns: COL_TEMPLATE }}
@@ -84,25 +78,18 @@ export function WatchlistTable() {
         <span className="text-center">Alert</span>
       </div>
 
-      {/* Scrollable rows — vertical only, no horizontal scroll */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 overscroll-contain scrollbar-thin">
-        {WATCHLIST_20.map((country, idx) => {
-          const color = RISK_COLORS[country.riskLevel];
-          const bg = RISK_BG[country.riskLevel];
-          const abbr = LEVEL_ABBR[country.riskLevel];
+        {rows.map((country, idx) => {
+          const color = RISK_COLORS[country.riskLevel] ?? "#6b7280";
+          const bg = RISK_BG[country.riskLevel] ?? "#f9fafb";
+          const abbr = LEVEL_ABBR[country.riskLevel] ?? "—";
 
           const rs = country.riskScore;
           const sparkData = [rs - 8, rs - 5, rs - 3, rs - 1, rs - 2, rs + 1, rs].map((v) =>
             Math.max(0, Math.min(100, v))
           );
 
-          const delta30d = country.forecast.score30d - rs;
-          const isDeltaUp = delta30d > 0;
-
-          const avgScore =
-            (country.subScores.conflictIntensity + country.subScores.socialUnrest + country.subScores.economicStress) / 3;
-          const sentColor = avgScore > 65 ? "#ef4444" : avgScore > 40 ? "#6b7280" : "#22c55e";
-
+          const sentColor = rs > 65 ? "#ef4444" : rs > 40 ? "#6b7280" : "#22c55e";
           const isEven = idx % 2 === 0;
 
           return (
@@ -118,16 +105,13 @@ export function WatchlistTable() {
                 display: "grid",
               }}
             >
-              {/* Rank */}
               <span className="text-xs text-gray-400 font-semibold tabular-nums">{idx + 1}</span>
 
-              {/* Country */}
               <div className="flex items-center gap-1.5 min-w-0">
-                <span className="text-sm">{country.flag}</span>
+                <span className="text-sm">{getCountryFlagEmoji(country.code)}</span>
                 <span className="text-[13px] font-medium text-gray-800 truncate">{country.name}</span>
               </div>
 
-              {/* Score — wider, with bar + value */}
               <div className="relative flex items-center justify-end gap-1" style={{ height: 22 }}>
                 <div
                   className="absolute left-0 top-0 bottom-0 rounded"
@@ -139,39 +123,26 @@ export function WatchlistTable() {
                 <span className="relative text-[10px] text-gray-400">pts</span>
               </div>
 
-              {/* Δ30d — wider, show direction + value */}
               <div className="flex items-center justify-end">
-                <span
-                  className="text-xs font-semibold tabular-nums"
-                  style={{ color: isDeltaUp ? "#ef4444" : "#22c55e" }}
-                >
-                  {isDeltaUp ? "▲" : "▼"} {Math.abs(delta30d)} pts
-                </span>
+                <span className="text-xs text-gray-300">—</span>
               </div>
 
-              {/* Level — wider badge, full label on hover via title */}
               <div className="flex items-center justify-center" title={country.riskLevel}>
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded" style={{ background: bg, color }}>
                   {abbr}
                 </span>
               </div>
 
-              {/* Trend — sparkline */}
               <div className="flex items-center justify-center min-w-0">
                 <Sparkline data={sparkData} width={42} height={14} color={color} />
               </div>
 
-              {/* Sentiment — dot + short label */}
               <div className="flex items-center justify-center gap-1">
                 <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ background: sentColor }} />
-                <span className="text-[10px] text-gray-500 truncate">
-                  {avgScore > 65 ? "High" : avgScore > 40 ? "Mid" : "Low"}
-                </span>
               </div>
 
-              {/* Alert — icon + text when anomaly */}
               <div className="flex items-center justify-center gap-0.5">
-                {country.anomaly.detected ? (
+                {country.isAnomaly ? (
                   <>
                     <span className="text-orange-500 text-sm">⚠</span>
                     <span className="text-[10px] font-medium text-orange-600">Yes</span>
@@ -185,7 +156,6 @@ export function WatchlistTable() {
         })}
       </div>
 
-      {/* Escalation movers */}
       <div className="shrink-0 border-t border-gray-100 pl-3 pr-3 py-1.5 space-y-0.5">
         <div className="flex items-center gap-1.5 flex-wrap text-xs">
           <span className="text-red-500 font-bold">▲</span>
@@ -204,7 +174,6 @@ export function WatchlistTable() {
           ))}
         </div>
       </div>
-
     </div>
   );
 }

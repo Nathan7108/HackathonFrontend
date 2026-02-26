@@ -9,16 +9,22 @@ export interface CountryRisk {
 // Dashboard summary from /api/dashboard/summary
 export interface DashboardSummary {
   globalThreatIndex: number;
+  globalThreatIndexDelta: number;
   activeAnomalies: number;
   highPlusCountries: number;
+  highPlusCountriesDelta: number;
   escalationAlerts24h: number;
-  modelHealth: {
-    accuracy: number;
-    features: number;
-    countries: number;
-    trainingYears: number;
-  };
-  countries: CountryRisk[];
+  modelHealth: number;
+  countries: DashboardCountry[];
+}
+
+export interface DashboardCountry {
+  code: string;
+  name: string;
+  riskScore: number;
+  riskLevel: "LOW" | "MODERATE" | "ELEVATED" | "HIGH" | "CRITICAL";
+  isAnomaly: boolean;
+  anomalyScore: number;
 }
 
 // Full analysis from /api/analyze
