@@ -198,30 +198,31 @@ function GlobeMap({ onCountrySelect, selectedCode, is3D = false, layers }: Props
         dragRotate: false,
       });
 
-      // Softer, more realistic base — not pure white; subtle blue water and warm land
+      // Softer, more realistic base — only set paint for layers that exist in this style
       map.on("style.load", () => {
-        try {
-          map.setPaintProperty("background", "background-color", "#e8e6e0");
-        } catch { /* optional */ }
-        try {
-          map.setPaintProperty("land", "background-color", "#e2e0d9");
-        } catch { /* layer can vary by style version */ }
-        try {
-          map.setPaintProperty("landcover", "fill-color", "#e2e0d9");
-        } catch { /* optional */ }
-        try {
-          map.setPaintProperty("water", "fill-color", "#a8bed5");
-        } catch { /* layer can vary by style version */ }
-        try {
-          map.setPaintProperty("waterway", "line-color", "#9cb4cc");
-        } catch { /* optional */ }
+        const style = map.getStyle();
+        const layerIds = new Set((style.layers ?? []).map((l: { id: string }) => l.id));
 
-        const labelLayers = map
-          .getStyle()
-          .layers?.filter((l: any) => l.id.includes("label") || l.id.includes("place"));
-        labelLayers?.forEach((l: any) => {
-          try { map.setPaintProperty(l.id, "text-color", "#6b7280"); } catch { /* layer type mismatch */ }
-          try { map.setPaintProperty(l.id, "text-opacity", 0.65); } catch { /* layer type mismatch */ }
+        const safeSetPaint = (id: string, prop: string, value: unknown) => {
+          if (layerIds.has(id)) {
+            try {
+              map.setPaintProperty(id, prop, value);
+            } catch { /* layer type mismatch */ }
+          }
+        };
+
+        safeSetPaint("background", "background-color", "#e8e6e0");
+        safeSetPaint("land", "background-color", "#e2e0d9");
+        safeSetPaint("landcover", "fill-color", "#e2e0d9");
+        safeSetPaint("water", "fill-color", "#a8bed5");
+        safeSetPaint("waterway", "line-color", "#9cb4cc");
+
+        const labelLayers = (style.layers ?? []).filter(
+          (l: any) => l.id.includes("label") || l.id.includes("place")
+        );
+        labelLayers.forEach((l: any) => {
+          safeSetPaint(l.id, "text-color", "#6b7280");
+          safeSetPaint(l.id, "text-opacity", 0.65);
         });
       });
 

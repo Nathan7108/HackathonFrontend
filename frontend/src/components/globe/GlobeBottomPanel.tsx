@@ -71,7 +71,7 @@ interface Props {
 
 export function GlobeBottomPanel({ onCountrySelect }: Props) {
   return (
-    <div className="bg-white border-t border-gray-200 px-6 py-8 min-h-[520px] shrink-0">
+    <div className="bg-white px-6 py-8 min-h-[520px] shrink-0">
       <div className="mb-4">
         <h2 className="text-sm font-bold uppercase tracking-wider text-gray-500">
           Intelligence feed

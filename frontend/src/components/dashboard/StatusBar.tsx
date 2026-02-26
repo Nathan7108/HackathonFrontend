@@ -6,7 +6,7 @@ export function StatusBar() {
       {/* Left: Brand + LIVE */}
       <div className="flex items-center gap-2">
         <span className="relative flex h-2 w-2">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+          <span className="light-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
           <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500" />
         </span>
         <span className="font-bold uppercase tracking-widest text-white/90" style={{ letterSpacing: "0.12em" }}>

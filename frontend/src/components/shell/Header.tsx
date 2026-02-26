@@ -186,7 +186,7 @@ export function Header() {
 
         <div className="flex items-center gap-2">
           <span className="relative flex h-2.5 w-2.5 shrink-0">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-70" />
+            <span className="light-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-70" />
             <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
           </span>
           <span className="text-[11px] font-semibold uppercase tracking-wider text-emerald-500">Live</span>

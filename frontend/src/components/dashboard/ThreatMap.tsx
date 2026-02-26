@@ -116,10 +116,15 @@ function SvgWorldCanvas() {
           return (
             <g key={country.code}>
               {country.anomaly.detected && (
-                <circle cx={coords.x} cy={coords.y} r={r + 4} fill="none" stroke={color} strokeWidth="1.2" opacity="0.5">
-                  <animate attributeName="r" from={`${r + 2}`} to={`${r + 9}`} dur="2s" repeatCount="indefinite" />
-                  <animate attributeName="opacity" from="0.7" to="0" dur="2s" repeatCount="indefinite" />
-                </circle>
+                <circle
+                  cx={coords.x}
+                  cy={coords.y}
+                  r={r + 6}
+                  fill="none"
+                  stroke={color}
+                  strokeWidth="1.2"
+                  opacity="0.35"
+                />
               )}
               <circle cx={coords.x} cy={coords.y} r={r + 2} fill={color} opacity="0.2" />
               <circle cx={coords.x} cy={coords.y} r={r} fill={color} opacity={0.9} stroke="white" strokeWidth="0.8" />
@@ -196,7 +201,7 @@ export function ThreatMap() {
           `;
           el.appendChild(core);
           if (country.anomaly.detected) {
-            el.style.animation = "marker-pulse 2s ease-out infinite";
+            el.classList.add("marker-pulse-anim");
           }
 
           const marker = new (mapboxgl as any).Marker({ element: el })
@@ -229,7 +234,7 @@ export function ThreatMap() {
           <span className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">Global Threat Map</span>
           <span className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded bg-green-50">
             <span className="relative flex h-1.5 w-1.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+              <span className="light-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
               <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-500" />
             </span>
             <span className="text-[9px] font-bold text-green-600 uppercase">Live</span>

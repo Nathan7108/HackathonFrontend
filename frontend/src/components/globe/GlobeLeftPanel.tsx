@@ -63,17 +63,17 @@ export function GlobeLeftPanel({
     onLayersChange({ ...layers, [key]: !layers[key] });
 
   return (
-    <div className="w-[220px] h-full flex-shrink-0 bg-white border-r border-gray-200 flex flex-col overflow-hidden">
+    <div className="w-[236px] h-full flex-shrink-0 bg-white border-r border-gray-200 flex flex-col overflow-hidden">
       {/* ── Section 1: Watchlist (top) ─────────────────────────────── */}
       <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin border-b border-gray-100">
-        <div className="px-2.5 pt-2.5 pb-1.5 shrink-0">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-600">
+        <div className="px-8 pt-4.5 pb-3.5 shrink-0">
+          <h3 className="text-[13px] font-semibold text-slate-800 tracking-[0.01em]">
             Watchlist
           </h3>
-          <span className="text-xs text-gray-500 mt-0.5 block">{ACTIVE_COUNTRIES.length} countries</span>
+          <span className="text-[12px] text-slate-600 mt-1 block font-medium">{ACTIVE_COUNTRIES.length} countries</span>
         </div>
 
-        <div className="px-1.5">
+        <div className="px-8 py-2">
           {ACTIVE_COUNTRIES.map((country) => {
             const color = RISK_COLORS[country.riskLevel];
             const isSelected = selectedCode === country.code;
@@ -83,7 +83,7 @@ export function GlobeLeftPanel({
               <div
                 key={country.code}
                 onClick={() => onCountrySelect(country.code)}
-                className="flex items-center gap-1.5 px-2 py-1.5 cursor-pointer transition-colors border-l-2 rounded-r"
+                className="flex items-center gap-1.5 px-4 py-2 cursor-pointer transition-colors border-l-2 rounded-md overflow-hidden"
                 style={{
                   borderLeftColor: isSelected ? "#2563eb" : "transparent",
                   background: isSelected ? "#eff6ff" : undefined,
@@ -94,23 +94,23 @@ export function GlobeLeftPanel({
                 <span className="text-sm leading-none shrink-0">{country.flag}</span>
                 <span
                   className="text-[13px] flex-1 truncate"
-                  style={{ color: "#374151", fontWeight: isSelected ? 600 : 400, maxWidth: 76 }}
+                  style={{ color: "#374151", fontWeight: isSelected ? 600 : 400, maxWidth: 72 }}
                 >
                   {country.name}
                 </span>
                 <span
-                  className="text-[13px] font-mono font-bold shrink-0 tabular-nums w-6 text-right"
+                  className="text-[12px] font-mono font-bold shrink-0 tabular-nums w-5 text-right"
                   style={{ color }}
                 >
                   {country.riskScore}
                 </span>
                 <span
-                  className="text-xs font-mono shrink-0 w-5 text-right"
+                  className="text-[11px] font-mono shrink-0 w-4 text-right"
                   style={{ color: delta > 0 ? "#dc2626" : delta < 0 ? "#16a34a" : "#9ca3af" }}
                 >
                   {delta > 0 ? `▲${delta}` : delta < 0 ? `▼${Math.abs(delta)}` : "▽0"}
                 </span>
-                <div className="w-[44px] h-2 bg-gray-100 rounded-full overflow-hidden shrink-0">
+                <div className="w-[34px] h-2 bg-gray-100 rounded-full overflow-hidden shrink-0">
                   <div
                     className="h-full rounded-full"
                     style={{ width: `${country.riskScore}%`, background: color }}
@@ -124,9 +124,9 @@ export function GlobeLeftPanel({
           })}
         </div>
 
-        <div className="px-2.5 py-2 border-t border-gray-100 mt-0.5">
-          <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">Movers</p>
-          <div className="text-xs">
+        <div className="px-8 py-4 border-t border-gray-100 mt-1">
+          <p className="text-[13px] font-semibold text-slate-800 tracking-[0.01em] mb-1.5">Movers</p>
+          <div className="text-[12px] leading-5">
             {TOP_ESCALATING.slice(0, 3).map((m, i) => (
               <span key={m.country}>
                 {i > 0 && <span className="text-gray-300 mx-0.5">·</span>}
@@ -134,7 +134,7 @@ export function GlobeLeftPanel({
               </span>
             ))}
           </div>
-          <div className="text-xs">
+          <div className="text-[12px] leading-5">
             {TOP_DEESCALATING.slice(0, 3).map((m, i) => (
               <span key={m.country}>
                 {i > 0 && <span className="text-gray-300 mx-0.5">·</span>}
@@ -146,15 +146,15 @@ export function GlobeLeftPanel({
       </div>
 
       {/* ── Section 2: Layers ─────────────────────────────────────── */}
-      <div className="shrink-0 px-2.5 pt-2.5 pb-2.5 border-b border-gray-100">
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-600">
+      <div className="shrink-0 px-8 pt-4.5 pb-4 border-b border-gray-100">
+        <h3 className="text-[13px] font-semibold text-slate-800 tracking-[0.01em]">
           Map layers
         </h3>
-        <div className="mt-1.5 space-y-1">
+        <div className="mt-2 space-y-1.5">
           {LAYER_CONFIG.map(({ key, label, color, count }) => (
             <label
               key={key}
-              className="flex items-center gap-2 py-1 cursor-pointer hover:bg-gray-50 px-1.5 rounded"
+              className="flex items-center gap-2 py-1.5 cursor-pointer hover:bg-gray-50 px-3 rounded-md"
             >
               <input
                 type="checkbox"
@@ -164,7 +164,7 @@ export function GlobeLeftPanel({
                 style={{ accentColor: "#2563eb" }}
               />
               <span className={`h-2 w-2 rounded-full shrink-0 ${color}`} />
-              <span className="text-[13px] text-gray-700 flex-1">{label}</span>
+              <span className="text-sm text-gray-700 flex-1">{label}</span>
               <span className="text-xs font-mono text-gray-500">{count}</span>
             </label>
           ))}
@@ -172,15 +172,15 @@ export function GlobeLeftPanel({
       </div>
 
       {/* ── Section 3: Data sources (footer) ───────────────────────── */}
-      <div className="shrink-0 px-2.5 py-2 bg-gray-50">
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">
+      <div className="shrink-0 px-8 py-4 bg-gray-50">
+        <h3 className="text-[13px] font-semibold text-slate-800 tracking-[0.01em] mb-1.5">
           Sources
         </h3>
-        <div className="grid grid-cols-3 gap-x-1.5 gap-y-1">
+        <div className="grid grid-cols-3 gap-x-2 gap-y-1.5">
           {DATA_SOURCES.map((s) => (
             <div key={s.name} className="flex items-center gap-1">
               <span className="h-2 w-2 rounded-full bg-green-500 shrink-0" />
-              <span className="text-xs text-gray-600 truncate">{s.name}</span>
+              <span className="text-[12px] text-gray-600 truncate">{s.name}</span>
               <span className="text-[11px] font-mono text-gray-500 ml-auto">{s.time}</span>
             </div>
           ))}
