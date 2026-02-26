@@ -169,7 +169,7 @@ class SentinelFeaturePipeline:
         # GDELT (10) — 90 days captures recent trends and acceleration
         gdelt_features = compute_gdelt_features(gdelt_df, window_days=90)
         # ACLED (10) — full history for full conflict picture
-        acled_features = compute_acled_features(acled_df, window_days=99999)
+        acled_features = compute_acled_features(acled_df, window_days=30)
         # UCDP (5)
         ucdp_features = compute_ucdp_features(ucdp_df, window_years=5)
         # World Bank (10) — already wb_-prefixed from fetch_world_bank_features
