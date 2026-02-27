@@ -1,8 +1,12 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { X, ArrowRight, Radio } from "lucide-react";
 import Link from "next/link";
 import type { CountryData } from "@/lib/placeholder-data";
+import { api } from "@/lib/api";
+import type { ForecastResult } from "@/lib/types";
+import { RiskSignalDecompositionCard } from "@/components/dashboard/RiskSignalDecompositionCard";
 
 const RISK_COLORS: Record<string, string> = {
   LOW: "#22c55e",
@@ -27,42 +31,50 @@ const FEATURE_LABELS: Record<string, string> = {
   acled_civil_unrest: "Civil unrest",
 };
 
-const SUB_SCORE_LABELS: Record<string, string> = {
-  conflictIntensity: "Conflict Intensity",
-  socialUnrest: "Social Unrest",
-  economicStress: "Economic Stress",
-};
-
-const SUB_SCORE_COLORS: Record<string, string> = {
-  conflictIntensity: "#ef4444",
-  socialUnrest: "#ea580c",
-  economicStress: "#eab308",
-};
-
-const HEADLINE_DOTS = ["🔴", "🟠", "🟢", "🔴", "🟡"];
-
 interface Props {
   country: CountryData | null;
   onClose: () => void;
 }
 
 export function GlobeDetailPanel({ country, onClose }: Props) {
+  const [apiForecast, setApiForecast] = useState<ForecastResult | null>(null);
+
+  useEffect(() => {
+    if (!country?.name || !country?.code) {
+      setApiForecast(null);
+      return;
+    }
+    let cancelled = false;
+    api
+      .getForecast(country.name, country.code)
+      .then((res) => {
+        if (!cancelled) setApiForecast(res);
+      })
+      .catch(() => {
+        if (!cancelled) setApiForecast(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [country?.name, country?.code]);
+
   if (!country) return null;
 
   const color = RISK_COLORS[country.riskLevel] ?? "#6b7280";
-  const delta = country.riskScore - country.forecast.score30d;
+  const forecast30d = apiForecast?.forecast_30d ?? country.forecast.score30d;
+  const delta = country.riskScore - forecast30d;
 
   return (
     <>
       <div className="absolute inset-0 z-20" onClick={onClose} />
 
       <div
-        className="absolute top-0 right-0 bottom-0 z-30 flex flex-col bg-white shadow-xl border-l border-gray-200"
+        className="absolute top-0 right-0 bottom-0 z-30 flex flex-col bg-white shadow-xl border-l border-slate-300"
         style={{ width: 340, animation: "slide-in-right 0.22s ease-out" }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* ── Header (60px) ────────────────────────────────────────── */}
-        <div className="shrink-0 px-4 pt-3 pb-2 border-b border-gray-100" style={{ minHeight: 60 }}>
+        <div className="shrink-0 px-4 pt-3 pb-2 border-b border-slate-300" style={{ minHeight: 60 }}>
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2 min-w-0">
               <span className="text-lg shrink-0">{country.flag}</span>
@@ -106,7 +118,7 @@ export function GlobeDetailPanel({ country, onClose }: Props) {
         </div>
 
         {/* ── Quick Stats Bar ──────────────────────────────────────── */}
-        <div className="shrink-0 px-4 py-1.5 bg-gray-50 border-b border-gray-100 flex items-center gap-2 text-[10px] font-mono text-gray-500">
+        <div className="shrink-0 px-4 py-1.5 bg-gray-50 border-b border-slate-300 flex items-center gap-2 text-[10px] font-mono text-gray-500">
           <span>
             Confidence:{" "}
             <span className="font-semibold text-gray-700">{Math.round(country.confidence * 100)}%</span>
@@ -128,87 +140,36 @@ export function GlobeDetailPanel({ country, onClose }: Props) {
 
         {/* ── Scrollable body ──────────────────────────────────────── */}
         <div className="flex-1 overflow-y-auto scrollbar-thin p-3 space-y-3">
-          {/* Sub-scores (3 horizontal bars, 20px each) */}
-          <div>
-            <div className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-1.5">
-              Sub-Scores
-            </div>
-            <div className="space-y-1.5">
-              {(Object.entries(country.subScores) as [string, number][]).map(([key, val]) => (
-                <div key={key} className="flex items-center gap-2" style={{ height: 20 }}>
-                  <span className="text-[10px] text-gray-500 w-24 shrink-0">
-                    {SUB_SCORE_LABELS[key] ?? key}
-                  </span>
-                  <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-all"
-                      style={{ width: `${val}%`, background: SUB_SCORE_COLORS[key] ?? color }}
-                    />
-                  </div>
-                  <span className="text-[11px] font-mono font-bold text-gray-600 w-6 text-right shrink-0">
-                    {val}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
+          {/* Risk Signal Decomposition (radar) */}
+          <RiskSignalDecompositionCard
+            countryName={country.name}
+            countryCode={country.code}
+            riskLevel={country.riskLevel}
+          />
 
-          {/* Forecast */}
+          {/* Forecast (ML: LSTM 30/60/90d) */}
           <div>
             <div className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-1.5">
               Forecast
             </div>
             <div className="grid grid-cols-3 gap-1.5">
               {[
-                { label: "30d", score: country.forecast.score30d },
-                { label: "60d", score: country.forecast.score60d },
-                { label: "90d", score: country.forecast.score90d },
+                { label: "30d", score: apiForecast?.forecast_30d ?? country.forecast.score30d },
+                { label: "60d", score: apiForecast?.forecast_60d ?? country.forecast.score60d },
+                { label: "90d", score: apiForecast?.forecast_90d ?? country.forecast.score90d },
               ].map(({ label, score }) => (
                 <div key={label} className="text-center py-1.5 bg-gray-50 rounded">
                   <div className="text-[9px] text-gray-400 uppercase">{label}</div>
                   <div className="text-sm font-bold tabular-nums" style={{ color }}>
-                    {score}
+                    {typeof score === "number" ? Math.round(score) : score}
                   </div>
                 </div>
               ))}
             </div>
             <div className="text-[10px] text-center font-medium mt-1" style={{ color }}>
-              {country.forecast.trend}
+              {apiForecast?.trend ?? country.forecast.trend}
             </div>
           </div>
-
-          {/* Intel brief */}
-          {country.briefText.length > 0 && (
-            <div>
-              <div className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-1">
-                Intel Brief
-              </div>
-              <p className="text-[11px] text-gray-600 leading-relaxed">{country.briefText[0]}</p>
-            </div>
-          )}
-
-          {/* Headlines */}
-          {country.headlines.length > 0 && (
-            <div>
-              <div className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-1">
-                Headlines
-              </div>
-              <div className="space-y-0.5">
-                {country.headlines.map((h, i) => (
-                  <div
-                    key={i}
-                    className="flex items-start gap-1.5 py-1 border-b border-gray-50 last:border-0"
-                  >
-                    <span className="text-[10px] shrink-0 mt-0.5">{HEADLINE_DOTS[i % HEADLINE_DOTS.length]}</span>
-                    <span className="text-[11px] text-gray-600 leading-relaxed flex-1">{h}</span>
-                    <span className="text-[9px] text-gray-400 font-mono shrink-0 mt-0.5">
-                      {i === 0 ? "2h" : i === 1 ? "5h" : "1d"}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
 
           {/* Top ML Drivers */}
           {country.featureImportance.length > 0 && (
@@ -239,7 +200,7 @@ export function GlobeDetailPanel({ country, onClose }: Props) {
         </div>
 
         {/* ── Footer CTA ───────────────────────────────────────────── */}
-        <div className="shrink-0 p-3 border-t border-gray-100">
+        <div className="shrink-0 p-3 border-t border-slate-300">
           <Link
             href={`/country/${country.code}`}
             className="flex items-center justify-center gap-2 w-full py-2.5 rounded-md text-sm font-semibold text-white transition-colors hover:opacity-90"

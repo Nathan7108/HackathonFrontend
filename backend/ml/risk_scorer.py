@@ -157,6 +157,7 @@ def _acled_features_from_period(full_df: pd.DataFrame, period, window_days: int 
 
 
 def _label_from_events(group) -> str:
+    # DEPRECATED: replaced by _composite_label() in Issue #5
     """Composite risk label from fatalities and event diversity (battles, explosions, etc.)."""
     fatalities = pd.to_numeric(group.get("fatalities", pd.Series(0)), errors="coerce").fillna(0).sum()
     event_type = group.get("event_type", pd.Series(dtype=object)).astype(str)
@@ -181,6 +182,108 @@ def _label_from_events(group) -> str:
     if score >= 100:
         return "ELEVATED"
     if score >= 20:
+        return "MODERATE"
+    return "LOW"
+
+
+def _compute_country_medians(acled_df: pd.DataFrame) -> float:
+    """Compute median monthly composite ACLED score for normalization."""
+    acled_df = acled_df.copy()
+    acled_df["event_date"] = pd.to_datetime(acled_df["event_date"], errors="coerce")
+    acled_df = acled_df.dropna(subset=["event_date"])
+    acled_df["year_month"] = acled_df["event_date"].dt.to_period("M")
+
+    monthly_scores = []
+    for period, group in acled_df.groupby("year_month"):
+        fatalities = pd.to_numeric(group.get("fatalities", pd.Series(0)), errors="coerce").fillna(0).sum()
+        event_type = group.get("event_type", pd.Series(dtype=object)).astype(str)
+        score = (
+            fatalities * 1.0
+            + (event_type == "Battles").sum() * 5.0
+            + (event_type == "Explosions/Remote violence").sum() * 4.0
+            + (event_type == "Violence against civilians").sum() * 3.0
+            + event_type.isin(["Protests", "Riots"]).sum() * 0.2
+        )
+        monthly_scores.append(score)
+
+    if not monthly_scores:
+        return 1.0
+    return max(float(pd.Series(monthly_scores).median()), 1.0)
+
+
+def _composite_label(features: dict, country_acled_median: float) -> str:
+    """
+    Composite risk label from ALL data sources, not just ACLED.
+
+    Weights:
+      ACLED (normalized)  = 40% of total score
+      GDELT tension       = 25% of total score
+      Economic stress     = 20% of total score
+      UCDP history        = 15% of total score
+
+    Total composite 0-100, then map to label.
+    """
+    # --- ACLED component (0-100, normalized to country baseline) ---
+    raw_acled = (
+        features.get("acled_fatalities_30d", 0) * 1.0
+        + features.get("acled_battle_count", 0) * 5.0
+        + features.get("acled_explosion_count", 0) * 4.0
+        + features.get("acled_civilian_violence", 0) * 3.0
+        + features.get("acled_protest_count", 0) * 0.2
+    )
+    median = max(country_acled_median, 1.0)
+    ratio = raw_acled / median
+    acled_score = min(100, max(0, ratio * 30))
+
+    # --- GDELT tension component (0-100) ---
+    goldstein = features.get("gdelt_goldstein_mean", 0)
+    tone = features.get("gdelt_avg_tone", 0)
+    conflict_pct = features.get("gdelt_conflict_pct", 0)
+    acceleration = features.get("gdelt_event_acceleration", 0)
+
+    gdelt_score = min(100, max(0,
+        max(0, -goldstein) * 6
+        + max(0, -tone) * 5
+        + conflict_pct * 40
+        + max(0, acceleration - 1) * 15
+    ))
+
+    # --- Economic stress component (0-100) ---
+    econ_score = features.get("econ_composite_score", 0)
+    inflation = features.get("wb_inflation_latest", 0)
+    gdp = features.get("wb_gdp_growth_latest", 0)
+    if inflation > 50:
+        econ_score = min(100, econ_score + 20)
+    elif inflation > 20:
+        econ_score = min(100, econ_score + 10)
+    if gdp < -5:
+        econ_score = min(100, econ_score + 15)
+
+    # --- UCDP historical component (0-100) ---
+    ucdp_deaths = features.get("ucdp_total_deaths", 0)
+    ucdp_recurrence = features.get("ucdp_recurrence_rate", 0)
+    ucdp_state_years = features.get("ucdp_state_conflict_years", 0)
+    ucdp_score = min(100, (
+        min(ucdp_deaths / 5000, 1) * 40
+        + ucdp_recurrence * 30
+        + min(ucdp_state_years / 5, 1) * 30
+    ))
+
+    # --- Weighted composite ---
+    composite = (
+        acled_score * 0.40
+        + gdelt_score * 0.25
+        + econ_score * 0.20
+        + ucdp_score * 0.15
+    )
+
+    if composite >= 65:
+        return "CRITICAL"
+    if composite >= 45:
+        return "HIGH"
+    if composite >= 25:
+        return "ELEVATED"
+    if composite >= 12:
         return "MODERATE"
     return "LOW"
 
@@ -270,6 +373,8 @@ def build_training_dataset() -> pd.DataFrame:
         # Country-level features (UCDP + World Bank only; GDELT is per-period below)
         country_features = _load_country_auxiliary_features(root, code, info)
 
+        country_median = _compute_country_medians(acled_df)
+
         for period, group in acled_df.groupby("year_month"):
             features = _acled_features_from_period(acled_df, period, window_days=30)
             features.update(country_features)
@@ -290,7 +395,7 @@ def build_training_dataset() -> pd.DataFrame:
             for col in FEATURE_COLUMNS:
                 if col not in features:
                     features[col] = 0.0
-            features["risk_label"] = _label_from_events(group)
+            features["risk_label"] = _composite_label(features, country_median)
             features["country_code"] = code
             frames.append(features)
 
@@ -407,6 +512,11 @@ def predict_risk(features: dict) -> dict:
         raise FileNotFoundError("Train the risk scorer first: python -m backend.ml.risk_scorer")
 
     model = joblib.load(model_path)
+    _compat_defaults = {"use_label_encoder": False, "gpu_id": None, "predictor": "auto",
+                        "n_jobs": 1, "validate_parameters": False}
+    for attr, default in _compat_defaults.items():
+        if not hasattr(model, attr):
+            setattr(model, attr, default)
     le = joblib.load(encoder_path)
 
     X = pd.DataFrame([{col: features.get(col, 0) for col in FEATURE_COLUMNS}])
@@ -416,6 +526,35 @@ def predict_risk(features: dict) -> dict:
 
     # Weighted score from all class probabilities — semantically aligned with distribution
     risk_score = score_from_probabilities(probabilities.tolist(), labels)
+
+    # --- Post-prediction calibration for non-ACLED tension signals ---
+    # Training uses per-month GDELT windows (sparse); inference uses full
+    # datasets (dense).  These floors address the distribution mismatch.
+
+    # 1. GDELT acceleration floor for countries without active ground combat
+    gdelt_accel = features.get("gdelt_event_acceleration", 0) or 0
+    acled_fatalities = features.get("acled_fatalities_30d", 0) or 0
+    if gdelt_accel > 3 and acled_fatalities < 100:
+        tone_neg = max(0, -(features.get("gdelt_avg_tone", 0) or 0))
+        if tone_neg > 0.3 or (features.get("gdelt_conflict_pct", 0) or 0) > 0.03:
+            accel_floor = min(50, int(gdelt_accel * 4))
+            risk_score = max(risk_score, accel_floor)
+
+    # 2. Economic stress floor for high-inflation countries
+    inflation = features.get("wb_inflation_latest", 0) or 0
+    if inflation > 20:
+        econ = features.get("econ_composite_score", 0) or 0
+        econ_floor = min(55, int(econ + min(inflation, 35)))
+        risk_score = max(risk_score, econ_floor)
+
+    # 3. UCDP conflict floor for extreme historical death tolls
+    ucdp_deaths = features.get("ucdp_total_deaths", 0) or 0
+    if ucdp_deaths > 50000:
+        ucdp_floor = min(80, int(60 + (ucdp_deaths / 50000) * 5))
+        risk_score = max(risk_score, ucdp_floor)
+
+    risk_score = min(100, risk_score)
+
     # Level derived from score — ALWAYS consistent
     risk_level = level_from_score(risk_score)
 

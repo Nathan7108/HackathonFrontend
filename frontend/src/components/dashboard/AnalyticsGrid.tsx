@@ -1,18 +1,14 @@
 "use client";
 
-import {
-  ResponsiveContainer, Tooltip,
-  PieChart, Pie, Cell, LineChart, Line, AreaChart, Area,
-} from "recharts";
-import { RISK_DISTRIBUTION, REGIONAL_BREAKDOWN, SENTIMENT_TREND_30D, MODEL_PERFORMANCE } from "@/lib/dashboard-data";
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip } from "recharts";
+import { useDashboardData } from "@/lib/hooks/useDashboardData";
 
-// Muted, editorial palette — less comic-book, more intel report
 const RISK_COLORS: Record<string, string> = {
   CRITICAL: "#7f1d1d",
-  HIGH:     "#b91c1c",
+  HIGH: "#b91c1c",
   ELEVATED: "#c2410c",
   MODERATE: "#a16207",
-  LOW:      "#166534",
+  LOW: "#166534",
 };
 
 function riskColorByScore(score: number) {
@@ -23,224 +19,220 @@ function riskColorByScore(score: number) {
   return RISK_COLORS.LOW;
 }
 
-function CardHeader({ title }: { title: string }) {
-  return (
-    <p className="text-[10px] uppercase tracking-[0.06em] text-slate-500 font-medium shrink-0 mb-2">
-      {title}
-    </p>
-  );
-}
+const RISK_TIER_ORDER = ["CRITICAL", "HIGH", "ELEVATED", "MODERATE", "LOW"] as const;
 
-// ── Risk Distribution ──────────────────────────────────────────────────────────
-function RiskDistributionCard() {
-  const total = RISK_DISTRIBUTION.reduce((s, d) => s + d.count, 0);
-  const maxCount = Math.max(...RISK_DISTRIBUTION.map((d) => d.count));
+// ── Risk Distribution (large card with real data) ─────────────────────────────
+function RiskDistributionCard({
+  distribution,
+  totalCountries,
+  recentChanges,
+  loading,
+}: {
+  distribution: Record<string, number>;
+  totalCountries: number;
+  recentChanges: { country: string; code: string; from: string; to: string; changedAt: string }[];
+  loading: boolean;
+}) {
+  const tiers = RISK_TIER_ORDER.map((tier) => ({ tier, count: distribution[tier] ?? 0 }));
+  const total = totalCountries || tiers.reduce((s, d) => s + d.count, 0);
+  const maxCount = Math.max(...tiers.map((d) => d.count), 1);
+  const highPlus = (distribution["CRITICAL"] ?? 0) + (distribution["HIGH"] ?? 0);
 
   return (
-    <div className="bg-white rounded-md border border-slate-200/80 p-4 flex flex-col overflow-hidden h-full min-h-0">
-      <CardHeader title="Risk Distribution" />
-      <div className="flex-1 flex flex-col justify-between min-h-0 py-0.5">
-        {RISK_DISTRIBUTION.map((d) => {
-          const pct = maxCount > 0 ? (d.count / maxCount) * 100 : 0;
-          const color = RISK_COLORS[d.tier];
-          return (
-            <div key={d.tier} className="flex items-center gap-2">
-              <span
-                className="text-[10px] font-medium text-slate-600 shrink-0 w-10"
-                style={{ letterSpacing: "0.02em" }}
-              >
-                {d.tier.slice(0, 3)}
-              </span>
-              <div className="flex-1 min-w-0 h-2 rounded-sm bg-slate-100 overflow-hidden">
-                <div
-                  className="h-full rounded-sm min-w-[2px] transition-[width]"
-                  style={{ width: `${pct}%`, backgroundColor: color }}
-                />
-              </div>
-              <span className="text-xs font-semibold tabular-nums text-slate-700 w-7 text-right shrink-0">
-                {d.count}
-              </span>
-              <span className="text-[10px] text-slate-400 tabular-nums w-8 text-right shrink-0">
-                {total > 0 ? Math.round((d.count / total) * 100) : 0}%
-              </span>
+    <div className="bg-white rounded-lg border border-slate-300 shadow-sm overflow-hidden flex flex-col min-h-[180px]">
+      <div className="px-4 pt-3 pb-1 border-b border-slate-100">
+        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+          Risk Distribution
+        </h3>
+        <p className="text-slate-400 text-[10px] mt-0.5">
+          {total} countries · {highPlus} HIGH+
+        </p>
+      </div>
+      <div className="flex-1 p-4 flex flex-col min-h-0">
+        {loading && (
+          <div className="flex-1 flex items-center justify-center text-slate-400 py-6 text-xs">Loading…</div>
+        )}
+        {!loading && total === 0 && (
+          <div className="flex-1 flex items-center justify-center text-slate-400 py-6 text-xs">No data</div>
+        )}
+        {!loading && total > 0 && (
+          <>
+            <div className="space-y-2.5 flex-1 min-h-0">
+              {tiers.map((d) => {
+                const pct = maxCount > 0 ? (d.count / maxCount) * 100 : 0;
+                const sharePct = total > 0 ? Math.round((d.count / total) * 100) : 0;
+                const color = RISK_COLORS[d.tier];
+                return (
+                  <div key={d.tier} className="flex items-center gap-2">
+                    <span className="text-[10px] font-semibold text-slate-600 shrink-0 w-14" style={{ letterSpacing: "0.03em" }}>
+                      {d.tier.slice(0, 3)}
+                    </span>
+                    <div className="flex-1 min-w-0 h-2.5 rounded bg-slate-100 overflow-hidden">
+                      <div className="h-full rounded min-w-[2px] transition-[width]" style={{ width: `${pct}%`, backgroundColor: color }} />
+                    </div>
+                    <span className="text-xs font-bold tabular-nums text-slate-800 w-6 text-right shrink-0">{d.count}</span>
+                    <span className="text-[10px] text-slate-500 tabular-nums w-6 text-right shrink-0">{sharePct}%</span>
+                  </div>
+                );
+              })}
             </div>
-          );
-        })}
+            {recentChanges.length > 0 && (
+              <div className="mt-3 pt-2 border-t border-slate-100">
+                <p className="text-[9px] uppercase tracking-wider text-slate-400 font-medium mb-1">Recent changes</p>
+                <ul className="space-y-0.5 max-h-12 overflow-y-auto">
+                  {recentChanges.slice(0, 3).map((ch, i) => (
+                    <li key={i} className="text-[10px] text-slate-600 flex items-center gap-1.5">
+                      <span className="font-medium text-slate-700 truncate">{ch.country}</span>
+                      <span className="text-slate-400 shrink-0">→</span>
+                      <span className="font-semibold shrink-0" style={{ color: RISK_COLORS[ch.to] ?? "#64748b" }}>{ch.to}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </>
+        )}
       </div>
     </div>
   );
 }
 
-// ── Regional Breakdown ─────────────────────────────────────────────────────────
-function RegionalBreakdownCard() {
-  const sorted = [...REGIONAL_BREAKDOWN].sort((a, b) => b.avgRisk - a.avgRisk);
+const REGION_ABBR: Record<string, string> = {
+  "Middle East": "Mid. East",
+  "Sub-Saharan Africa": "Sub-Sahara",
+  "South Asia": "S. Asia",
+  "East Asia": "E. Asia",
+  "Europe": "Europe",
+  "Latin America": "Lat. Am.",
+  "Americas": "Americas",
+  "Africa": "Africa",
+  "Asia": "Asia",
+  "Other": "Other",
+};
 
-  const ABBR: Record<string, string> = {
-    "Middle East":        "Mid. East",
-    "Sub-Saharan Africa": "Sub-Sahara",
-    "South Asia":         "S. Asia",
-    "East Asia":          "E. Asia",
-    "Europe":             "Europe",
-    "Latin America":      "Lat. Am.",
-  };
-
-  return (
-    <div className="bg-white rounded-md border border-slate-200/80 p-4 flex flex-col overflow-hidden h-full min-h-0">
-      <CardHeader title="Regional Breakdown" />
-      <div className="flex-1 flex flex-col justify-between min-h-0 py-0.5">
-        {sorted.map((r) => {
-          const color = riskColorByScore(r.avgRisk);
-          const label = ABBR[r.region] ?? r.region;
-
-          return (
-            <div key={r.region} className="flex items-center gap-2">
-              <span className="text-[10px] text-slate-600 shrink-0 truncate w-16 font-medium">
-                {label}
-              </span>
-              <div className="flex-1 min-w-0 h-2 rounded-sm bg-slate-100 overflow-hidden">
-                <div
-                  className="h-full rounded-sm min-w-[2px]"
-                  style={{ width: `${r.avgRisk}%`, backgroundColor: color }}
-                />
-              </div>
-              <span className="text-xs font-semibold tabular-nums w-6 text-right shrink-0" style={{ color }}>
-                {r.avgRisk}
-              </span>
-              {r.anomalies > 0 ? (
-                <span className="text-[10px] text-amber-700 bg-amber-50/80 font-medium tabular-nums px-1.5 py-0.5 rounded shrink-0">
-                  {r.anomalies}
-                </span>
-              ) : (
-                <span className="w-7 shrink-0" />
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// ── Media Sentiment ────────────────────────────────────────────────────────────
-function SentimentGaugeCard() {
-  const latest = SENTIMENT_TREND_30D[SENTIMENT_TREND_30D.length - 1];
-  const total  = latest.escalatory + latest.neutral + latest.deescalatory;
-  const escPct = Math.round((latest.escalatory / total) * 100);
-  const neuPct = total > 0 ? Math.round((latest.neutral / total) * 100) : 0;
-  const dePct  = total > 0 ? Math.round((latest.deescalatory / total) * 100) : 0;
-
-  const pieData = [
-    { name: "Escalatory", value: latest.escalatory, color: "#dc2626", pct: escPct },
-    { name: "Neutral",    value: latest.neutral,     color: "#64748b", pct: neuPct },
-    { name: "De-escalatory", value: latest.deescalatory, color: "#16a34a", pct: dePct },
-  ];
-
-  const trendData = SENTIMENT_TREND_30D.slice(-14).map((d, i) => ({ i, v: d.escalatory }));
+// ── Regional Breakdown (large card with real data) ────────────────────────────
+function RegionalBreakdownCard({
+  regions,
+  loading,
+}: {
+  regions: { region: string; avgRisk: number; anomalies: number; escalations: number; countries?: number }[];
+  loading: boolean;
+}) {
+  const sorted = [...regions].sort((a, b) => b.avgRisk - a.avgRisk);
+  const totalCountries = regions.reduce((s, r) => s + (r.countries ?? 0), 0);
 
   return (
-    <div className="bg-white rounded-md border border-slate-200/80 p-4 flex flex-col overflow-hidden h-full min-h-0">
-      <div className="shrink-0 mb-3">
-        <p className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">Media Sentiment</p>
-        <p className="text-[10px] text-slate-400 mt-0.5">Headline tone · last 30 days</p>
+    <div className="bg-white rounded-lg border border-slate-300 shadow-sm overflow-hidden flex flex-col min-h-[180px]">
+      <div className="px-4 pt-3 pb-1 border-b border-slate-100">
+        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+          Regional Breakdown
+        </h3>
+        <p className="text-slate-400 text-[10px] mt-0.5">
+          {totalCountries > 0 ? `${totalCountries} countries` : "By region"}
+        </p>
       </div>
-      <div className="flex items-center gap-4 flex-1 min-h-0">
-        {/* Donut */}
-        <div className="shrink-0" style={{ width: 100, height: 100 }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Pie
-                data={pieData}
-                innerRadius={30}
-                outerRadius={46}
-                dataKey="value"
-                startAngle={90}
-                endAngle={-270}
-                isAnimationActive={false}
-              >
-                {pieData.map((entry, i) => (
-                  <Cell key={i} fill={entry.color} />
-                ))}
-              </Pie>
-            </PieChart>
-          </ResponsiveContainer>
-        </div>
-
-        {/* Stats */}
-        <div className="flex flex-col gap-2 flex-1 min-w-0">
-          <div className="flex items-baseline gap-2">
-            <span className="text-3xl font-bold tabular-nums" style={{ color: "#dc2626" }}>{escPct}%</span>
-            <span className="text-xs font-semibold text-red-600">Escalatory</span>
-          </div>
-          <div className="space-y-1.5">
-            {pieData.map((p) => (
-              <div key={p.name} className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <span className="inline-block w-2.5 h-2.5 rounded-full shrink-0" style={{ background: p.color }} />
-                  <span className="text-xs text-slate-600">{p.name}</span>
+      <div className="flex-1 p-4 min-h-0 overflow-auto">
+        {loading && (
+          <div className="flex items-center justify-center text-slate-400 py-6 text-xs">Loading…</div>
+        )}
+        {!loading && sorted.length === 0 && (
+          <div className="flex items-center justify-center text-slate-400 py-6 text-xs">No data</div>
+        )}
+        {!loading && sorted.length > 0 && (
+          <div className="space-y-3">
+            {sorted.map((r) => {
+              const color = riskColorByScore(r.avgRisk);
+              const label = REGION_ABBR[r.region] ?? r.region;
+              const n = r.countries ?? 0;
+              return (
+                <div key={r.region} className="space-y-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-semibold text-slate-700 truncate">{label}</span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {n > 0 && <span className="text-[9px] text-slate-400 tabular-nums">{n}</span>}
+                      {r.anomalies > 0 && (
+                        <span className="text-[9px] font-semibold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded">⚠{r.anomalies}</span>
+                      )}
+                      {r.escalations > 0 && (
+                        <span className="text-[9px] font-semibold text-red-700 bg-red-50 px-1.5 py-0.5 rounded">↑{r.escalations}</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 min-w-0 h-2.5 rounded bg-slate-100 overflow-hidden">
+                      <div className="h-full rounded min-w-[2px]" style={{ width: `${Math.min(r.avgRisk, 100)}%`, backgroundColor: color }} />
+                    </div>
+                    <span className="text-xs font-bold tabular-nums w-6 text-right shrink-0" style={{ color }}>{r.avgRisk}</span>
+                  </div>
                 </div>
-                <span className="text-xs font-semibold tabular-nums text-slate-700">{p.pct}%</span>
-              </div>
-            ))}
+              );
+            })}
           </div>
-          {/* Mini trend */}
-          <div className="mt-1">
-            <p className="text-[10px] text-slate-400 mb-1">Escalatory trend (14d)</p>
-            <div style={{ height: 28 }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={trendData} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
-                  <Area type="monotone" dataKey="v" stroke="#dc2626" fill="#dc2626" fillOpacity={0.2} strokeWidth={1.5} dot={false} isAnimationActive={false} />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-        </div>
+        )}
       </div>
     </div>
   );
 }
 
-// ── Model Health ───────────────────────────────────────────────────────────────
-function ModelHealthCard() {
-  const latest = MODEL_PERFORMANCE[MODEL_PERFORMANCE.length - 1];
-  const chartData = MODEL_PERFORMANCE.map((d, i) => ({ i, v: d.accuracy }));
+// Hardcoded trend for media chart (e.g. headline tone / escalatory % over last 14 days)
+const MEDIA_CHART_DATA = [
+  { day: "D1", escalatory: 38, neutral: 42, deesc: 20 },
+  { day: "D2", escalatory: 41, neutral: 40, deesc: 19 },
+  { day: "D3", escalatory: 44, neutral: 38, deesc: 18 },
+  { day: "D4", escalatory: 42, neutral: 39, deesc: 19 },
+  { day: "D5", escalatory: 46, neutral: 37, deesc: 17 },
+  { day: "D6", escalatory: 48, neutral: 36, deesc: 16 },
+  { day: "D7", escalatory: 45, neutral: 38, deesc: 17 },
+  { day: "D8", escalatory: 50, neutral: 34, deesc: 16 },
+  { day: "D9", escalatory: 52, neutral: 33, deesc: 15 },
+  { day: "D10", escalatory: 49, neutral: 35, deesc: 16 },
+  { day: "D11", escalatory: 51, neutral: 34, deesc: 15 },
+  { day: "D12", escalatory: 54, neutral: 32, deesc: 14 },
+  { day: "D13", escalatory: 52, neutral: 33, deesc: 15 },
+  { day: "D14", escalatory: 55, neutral: 31, deesc: 14 },
+];
+
+// ── Media chart (full width: headline / sentiment trend) ─────────────────────
+function MediaChart() {
+  const latest = MEDIA_CHART_DATA[MEDIA_CHART_DATA.length - 1];
+  const total = latest.escalatory + latest.neutral + latest.deesc;
+  const escPct = total ? Math.round((latest.escalatory / total) * 100) : 0;
 
   return (
-    <div
-      className="rounded-md border border-slate-200/80 overflow-hidden h-full flex flex-col min-h-0 p-4"
-      style={{ background: "#f0fdf4" }}
-    >
-      {/* Header with number */}
-      <div className="shrink-0">
-        <p className="text-[10px] uppercase tracking-[0.06em] text-green-700 font-medium mb-2">Model Health</p>
-        <div className="flex items-baseline gap-1.5">
-          <span className="text-3xl font-bold tabular-nums text-green-700">{latest.accuracy}%</span>
-          <span className="text-[10px] text-green-600 font-semibold">accuracy</span>
-        </div>
-        <div className="flex gap-3 mt-0.5">
-          <span className="text-[10px] text-green-700">47 features</span>
-          <span className="text-[10px] text-green-700">201 models</span>
-          <span className="text-[10px] text-green-600 font-bold">✓ 6/6 sources</span>
-        </div>
+    <div className="col-span-2 rounded-lg border border-slate-300 bg-white shadow-sm overflow-hidden flex flex-col min-h-[200px]">
+      <div className="px-4 py-2.5 border-b border-slate-100 flex items-center justify-between">
+        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+          Media sentiment · headline tone
+        </h3>
+        <span className="text-xs font-bold text-red-600 tabular-nums">{escPct}% escalatory (14d)</span>
       </div>
-
-      {/* Chart fills the rest */}
-      <div className="flex-1 min-h-0 mt-2" style={{ minHeight: 48 }}>
+      <div className="flex-1 min-h-[140px] p-3">
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={chartData} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
-            <Area
-              type="monotone"
-              dataKey="v"
-              stroke="#16a34a"
-              fill="#16a34a"
-              fillOpacity={0.2}
-              strokeWidth={2}
-              dot={false}
-              isAnimationActive={false}
-            />
+          <AreaChart data={MEDIA_CHART_DATA} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+            <defs>
+              <linearGradient id="mediaEsc" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#ef4444" stopOpacity={0.4} />
+                <stop offset="100%" stopColor="#ef4444" stopOpacity={0} />
+              </linearGradient>
+              <linearGradient id="mediaNeu" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#64748b" stopOpacity={0.3} />
+                <stop offset="100%" stopColor="#64748b" stopOpacity={0} />
+              </linearGradient>
+              <linearGradient id="mediaDeesc" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#22c55e" stopOpacity={0.3} />
+                <stop offset="100%" stopColor="#22c55e" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <XAxis dataKey="day" tick={{ fontSize: 9 }} stroke="#94a3b8" />
+            <YAxis tick={{ fontSize: 9 }} stroke="#94a3b8" tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
             <Tooltip
-              contentStyle={{ fontSize: 9, padding: "2px 4px", borderRadius: 3 }}
-              formatter={(v) => [`${v}%`, "Acc"]}
+              formatter={(value: number | undefined) => [value != null ? `${value}%` : "", ""]}
+              contentStyle={{ fontSize: 11, padding: "6px 8px" }}
+              labelFormatter={(label) => `Day ${label.replace("D", "")}`}
             />
+            <Area type="monotone" dataKey="escalatory" stroke="#ef4444" fill="url(#mediaEsc)" strokeWidth={1.5} name="Escalatory" stackId="1" />
+            <Area type="monotone" dataKey="neutral" stroke="#64748b" fill="url(#mediaNeu)" strokeWidth={1.5} name="Neutral" stackId="1" />
+            <Area type="monotone" dataKey="deesc" stroke="#22c55e" fill="url(#mediaDeesc)" strokeWidth={1.5} name="De-escalatory" stackId="1" />
           </AreaChart>
         </ResponsiveContainer>
       </div>
@@ -248,14 +240,26 @@ function ModelHealthCard() {
   );
 }
 
-// ── Grid ───────────────────────────────────────────────────────────────────────
+// ── Grid: 2 cards side by side, then full-width media ─────────────────────────
 export function AnalyticsGrid() {
+  const { data, loading } = useDashboardData();
+  const riskDist = data.kpis.riskDistribution ?? {
+    distribution: {},
+    totalCountries: 0,
+    recentChanges: [],
+  };
+  const regionalBreakdown = data.kpis.regionalBreakdown ?? [];
+
   return (
-    <div className="grid grid-cols-2 gap-3 h-full">
-      <RiskDistributionCard />
-      <RegionalBreakdownCard />
-      <SentimentGaugeCard />
-      <ModelHealthCard />
+    <div className="grid grid-cols-2 gap-4 auto-rows-auto">
+      <RiskDistributionCard
+        distribution={riskDist.distribution}
+        totalCountries={riskDist.totalCountries}
+        recentChanges={riskDist.recentChanges ?? []}
+        loading={loading}
+      />
+      <RegionalBreakdownCard regions={regionalBreakdown} loading={loading} />
+      <MediaChart />
     </div>
   );
 }

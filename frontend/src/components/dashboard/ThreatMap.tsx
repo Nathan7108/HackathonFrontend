@@ -158,7 +158,7 @@ export function ThreatMap() {
       const map = new (mapboxgl as any).Map({
         container: mapContainer.current,
         style: "mapbox://styles/mapbox/streets-v12",
-        center: [18, 24],
+        center: [18, 27],
         zoom: 1.45,
         pitch: 18,
         bearing: -8,
@@ -175,7 +175,6 @@ export function ThreatMap() {
             "horizon-blend": 0.16,
           });
         }
-
         markersRef.current.forEach((m: any) => m?.remove?.());
         markersRef.current = [];
 
@@ -210,6 +209,7 @@ export function ThreatMap() {
           markersRef.current.push(marker);
         });
 
+        map.resize();
         setMapReady(true);
       });
     });
@@ -228,8 +228,8 @@ export function ThreatMap() {
   const timeWindows: TimeWindow[] = ["24h", "7d", "30d", "90d"];
 
   return (
-    <div className="flex flex-col h-full bg-white rounded-md shadow-[0_1px_3px_rgba(0,0,0,0.06)] overflow-hidden">
-      <div className="flex items-center justify-between px-3 py-1 border-b border-gray-100 shrink-0">
+    <div className="flex flex-col h-full bg-white rounded-md border border-slate-300 shadow-[0_1px_3px_rgba(0,0,0,0.06)] overflow-hidden">
+      <div className="flex items-center justify-between px-3 py-1 border-b border-slate-300 shrink-0">
         <div className="flex items-center gap-2">
           <span className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">Global Threat Map</span>
           <span className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded bg-green-50">
@@ -257,35 +257,37 @@ export function ThreatMap() {
         </div>
       </div>
 
-      <div className="flex-1 relative min-h-0">
-        {hasToken ? (
-          <div
-            ref={mapContainer}
-            className="absolute inset-0 w-full h-full"
-            style={{ opacity: mapReady ? 1 : 0, transition: "opacity 0.4s ease" }}
-          />
-        ) : (
-          <div className="absolute inset-0">
-            <SvgWorldCanvas />
-          </div>
-        )}
+      <div className="flex-1 flex flex-col justify-end min-h-0 relative">
+        <div className="w-full relative" style={{ aspectRatio: "4/3" }}>
+          {hasToken ? (
+            <div
+              ref={mapContainer}
+              className="absolute top-0 left-0 right-0 w-full h-full"
+              style={{ bottom: 14, opacity: mapReady ? 1 : 0, transition: "opacity 0.4s ease" }}
+            />
+          ) : (
+            <div className="absolute top-0 left-0 right-0" style={{ bottom: 14 }}>
+              <SvgWorldCanvas />
+            </div>
+          )}
 
-        {!mapReady && hasToken && (
-          <div className="absolute inset-0 flex items-center justify-center bg-slate-50/80">
-            <span className="text-xs text-gray-500">Loading map…</span>
-          </div>
-        )}
+          {!mapReady && hasToken && (
+            <div className="absolute top-0 left-0 right-0 flex items-center justify-center bg-slate-50/80" style={{ bottom: 14 }}>
+              <span className="text-xs text-gray-500">Loading map…</span>
+            </div>
+          )}
 
-        <div className="absolute bottom-1.5 left-2 flex items-center gap-2 px-2 py-1 rounded bg-white/90 backdrop-blur-sm shadow-sm z-10">
-          {Object.entries(RISK_COLORS).map(([level, color]) => (
-            <span key={level} className="flex items-center gap-0.5">
-              <span className="inline-block w-2 h-2 rounded-full" style={{ background: color }} />
-              <span className="text-[9px] text-gray-600 uppercase">{level.slice(0, 4)}</span>
-            </span>
-          ))}
-        </div>
-        <div className="absolute bottom-1.5 right-2 z-10">
-          <span className="text-[9px] text-gray-500 bg-white/80 px-1.5 py-0.5 rounded">201 countries monitored</span>
+          <div className="absolute bottom-1.5 left-2 flex items-center gap-2 px-2 py-1 rounded bg-white/90 backdrop-blur-sm shadow-sm z-10">
+            {Object.entries(RISK_COLORS).map(([level, color]) => (
+              <span key={level} className="flex items-center gap-0.5">
+                <span className="inline-block w-2 h-2 rounded-full" style={{ background: color }} />
+                <span className="text-[9px] text-gray-600 uppercase">{level.slice(0, 4)}</span>
+              </span>
+            ))}
+          </div>
+          <div className="absolute bottom-1.5 right-2 z-10">
+            <span className="text-[9px] text-gray-500 bg-white/80 px-1.5 py-0.5 rounded">201 countries monitored</span>
+          </div>
         </div>
       </div>
     </div>

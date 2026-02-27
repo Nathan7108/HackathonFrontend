@@ -1,183 +1,172 @@
 "use client";
 
-import { AreaChart, Area, ResponsiveContainer } from "recharts";
-import { KPI_SPARKLINE_DATA } from "@/lib/dashboard-data";
-import type { DashboardSummary } from "@/lib/types";
+import { useState, useEffect } from "react";
+import { Card, SparkAreaChart } from "@tremor/react";
+import { api } from "@/lib/api";
+import type { DashboardKpis, DashboardKpiHistory } from "@/lib/types";
 
-interface KpiCardProps {
-  label: string;
-  value: string | number;
-  delta?: string;
-  deltaUp?: boolean;
-  sparkData?: number[];
-  accentColor: string;
-  bgColor: string;
-  textColor: string;
-  sourceDots?: boolean;
+function classNames(...classes: (string | boolean | undefined)[]) {
+  return classes.filter(Boolean).join(" ");
 }
 
-function KpiCard({
-  label,
-  value,
-  delta,
-  deltaUp,
-  sparkData,
-  accentColor,
-  bgColor,
-  textColor,
-  sourceDots = false,
-}: KpiCardProps) {
-  const chartData = sparkData?.map((v, i) => ({ i, v })) ?? [];
-
-  return (
-    <div
-      style={{
-        background: bgColor,
-        borderLeft: `3px solid ${accentColor}`,
-        borderRadius: 6,
-        overflow: "hidden",
-        position: "relative",
-        height: 92,
-        boxShadow: "0 1px 3px rgba(0,0,0,0.07)",
-      }}
-    >
-      {/* Label + value — top section */}
-      <div style={{ padding: "7px 10px 0", position: "relative", zIndex: 1 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <span
-            style={{
-              fontSize: 9,
-              textTransform: "uppercase",
-              letterSpacing: "0.07em",
-              color: "#6b7280",
-              fontWeight: 700,
-            }}
-          >
-            {label}
-          </span>
-          {delta && (
-            <span style={{ fontSize: 10, fontWeight: 700, color: deltaUp ? "#ef4444" : "#22c55e" }}>
-              {deltaUp ? "▲" : "▼"}{delta}
-            </span>
-          )}
-        </div>
-        <span
-          style={{
-            fontSize: 28,
-            fontWeight: 800,
-            color: textColor,
-            fontVariantNumeric: "tabular-nums",
-            lineHeight: 1.1,
-            display: "block",
-            marginTop: 2,
-          }}
-        >
-          {value}
-        </span>
-      </div>
-
-      {/* Area chart — fills the bottom half, edge to edge, no padding */}
-      {!sourceDots && chartData.length > 0 && (
-        <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 46 }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={chartData} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
-              <Area
-                type="monotone"
-                dataKey="v"
-                stroke={accentColor}
-                fill={accentColor}
-                fillOpacity={0.2}
-                strokeWidth={1.5}
-                dot={false}
-                isAnimationActive={false}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-      )}
-
-      {/* Source dots — for "6/6 Active" card */}
-      {sourceDots && (
-        <div style={{ position: "absolute", bottom: 10, left: 10 }}>
-          <div style={{ display: "flex", gap: 4, marginBottom: 4 }}>
-            {[0, 1, 2].map((i) => (
-              <span key={i} style={{ display: "inline-block", width: 9, height: 9, borderRadius: "50%", background: "#22c55e" }} />
-            ))}
-          </div>
-          <div style={{ display: "flex", gap: 4 }}>
-            {[0, 1, 2].map((i) => (
-              <span key={i} style={{ display: "inline-block", width: 9, height: 9, borderRadius: "50%", background: "#22c55e" }} />
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
+function getChartSeries(
+  history: DashboardKpiHistory | null,
+  key: keyof DashboardKpiHistory
+): number[] {
+  const series = history?.[key];
+  if (series?.values?.length) return series.values;
+  return [];
 }
 
-interface KpiStripProps {
-  data: DashboardSummary;
+/** Build spark chart data: array of { date, [categoryName]: value } */
+function buildChartData(
+  values: number[],
+  categoryName: string
+): Record<string, string | number>[] {
+  if (!values.length) return [];
+  return values.map((v, i) => ({ date: `D${i + 1}`, [categoryName]: v }));
+}
+
+const KPI_COLORS = [
+  { tremor: "orange" as const, positive: "emerald", negative: "red" },
+  { tremor: "red" as const, positive: "emerald", negative: "red" },
+  { tremor: "amber" as const, positive: "emerald", negative: "red" },
+  { tremor: "violet" as const, positive: "emerald", negative: "red" },
+  { tremor: "emerald" as const, positive: "emerald", negative: "red" },
+];
+
+export interface KpiStripProps {
+  data: DashboardKpis;
   loading: boolean;
 }
 
 export function KpiStrip({ data, loading }: KpiStripProps) {
-  const gtiDelta = data.globalThreatIndexDelta;
-  const hpDelta = data.highPlusCountriesDelta;
+  const [history, setHistory] = useState<DashboardKpiHistory | null>(null);
+  useEffect(() => {
+    api.getDashboardKpiHistory().then(setHistory).catch(() => setHistory(null));
+  }, []);
+
+  const dist = data.riskDistribution?.distribution ?? {};
+  const highPlusCount =
+    (dist["CRITICAL"] ?? 0) + (dist["HIGH"] ?? 0) ||
+    (data.riskDistribution?.totalCountries ?? 0);
+  const sourcesTotal = data.sourcesActive?.total ?? 6;
+  const sourcesActive = data.sourcesActive?.active ?? sourcesTotal;
+  const sourcesValue = `${sourcesActive}/${sourcesTotal}`;
+
+  const globalScore = data.globalThreatIndex?.score ?? 0;
+  const globalDelta = data.globalThreatIndex?.delta24h ?? 0;
+  const globalTrend = data.globalThreatIndex?.trend ?? "STABLE";
+
+  const summary = [
+    {
+      name: "Global Threat Index",
+      value: String(globalScore),
+      change: globalDelta >= 0 ? `+${globalDelta}` : String(globalDelta),
+      percentageChange:
+        globalScore > 0
+          ? `${globalDelta >= 0 ? "+" : ""}${((globalDelta / globalScore) * 100).toFixed(1)}%`
+          : "—",
+      changeType: globalTrend === "ESCALATING" ? "negative" : globalTrend === "DE-ESCALATING" ? "positive" : "neutral",
+      chartKey: "globalThreatIndex" as const,
+    },
+    {
+      name: "Active Anomalies",
+      value: String(data.activeAnomalies?.total ?? 0),
+      change: "—",
+      percentageChange: "—",
+      changeType: "neutral" as const,
+      chartKey: "activeAnomalies" as const,
+    },
+    {
+      name: "High+ Countries",
+      value: String(highPlusCount),
+      change: "—",
+      percentageChange: "—",
+      changeType: "neutral" as const,
+      chartKey: "highPlusCountries" as const,
+    },
+    {
+      name: "Escalation Alerts",
+      value: String(data.escalationAlerts?.count ?? 0),
+      change: "—",
+      percentageChange: "—",
+      changeType: "neutral" as const,
+      chartKey: "escalationAlerts" as const,
+    },
+    {
+      name: "Sources Active",
+      value: sourcesValue,
+      change: "—",
+      percentageChange: "—",
+      changeType: "positive" as const,
+      chartKey: "sourcesActive" as const,
+    },
+  ];
 
   return (
-    <div className="grid grid-cols-6 gap-3" style={{ opacity: loading ? 0.5 : 1, transition: "opacity 0.3s" }}>
-      <KpiCard
-        label="Global Threat Index"
-        value={data.globalThreatIndex}
-        delta={gtiDelta !== 0 ? `${gtiDelta > 0 ? "+" : ""}${gtiDelta}` : undefined}
-        deltaUp={gtiDelta > 0}
-        sparkData={KPI_SPARKLINE_DATA[0]}
-        accentColor="#f59e0b"
-        bgColor="#fffbeb"
-        textColor="#d97706"
-      />
-      <KpiCard
-        label="Active Anomalies"
-        value={data.activeAnomalies}
-        sparkData={KPI_SPARKLINE_DATA[1]}
-        accentColor="#ef4444"
-        bgColor="#fef2f2"
-        textColor="#dc2626"
-      />
-      <KpiCard
-        label="HIGH+ Countries"
-        value={data.highPlusCountries}
-        delta={hpDelta !== 0 ? `${hpDelta > 0 ? "+" : ""}${hpDelta}` : undefined}
-        deltaUp={hpDelta > 0}
-        sparkData={KPI_SPARKLINE_DATA[2]}
-        accentColor="#ef4444"
-        bgColor="#fef2f2"
-        textColor="#dc2626"
-      />
-      <KpiCard
-        label="Escalation Alerts 24h"
-        value={data.escalationAlerts24h}
-        sparkData={KPI_SPARKLINE_DATA[3]}
-        accentColor="#f97316"
-        bgColor="#fff7ed"
-        textColor="#ea580c"
-      />
-      <KpiCard
-        label="Model Accuracy"
-        value="98%"
-        sparkData={KPI_SPARKLINE_DATA[4]}
-        accentColor="#22c55e"
-        bgColor="#f0fdf4"
-        textColor="#16a34a"
-      />
-      <KpiCard
-        label="Sources Active"
-        value="6/6"
-        sourceDots
-        accentColor="#3b82f6"
-        bgColor="#eff6ff"
-        textColor="#2563eb"
-      />
-    </div>
+    <dl
+      className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5 p-4"
+      style={{ opacity: loading ? 0.6 : 1, transition: "opacity 0.3s" }}
+    >
+      {summary.map((item, idx) => {
+        const colors = KPI_COLORS[idx];
+        const chartValues = getChartSeries(history, item.chartKey);
+        const chartData = buildChartData(chartValues, item.name);
+        const sparkColor =
+          item.changeType === "positive"
+            ? [colors.positive]
+            : item.changeType === "negative"
+              ? [colors.negative]
+              : [colors.tremor];
+        return (
+          <Card key={item.name} className="min-h-[140px]">
+            <dt className="text-tremor-default font-medium text-tremor-content-strong dark:text-dark-tremor-content-strong">
+              {item.name}
+            </dt>
+            <div className="mt-1 flex items-baseline justify-between">
+              <dd
+                className={classNames(
+                  item.changeType === "positive" &&
+                    "text-emerald-700 dark:text-emerald-500",
+                  item.changeType === "negative" &&
+                    "text-red-700 dark:text-red-500",
+                  "text-tremor-title font-semibold tabular-nums"
+                )}
+              >
+                {item.value}
+              </dd>
+              {(item.change !== "—" || item.percentageChange !== "—") && (
+                <dd className="flex items-center space-x-1 text-tremor-default">
+                  <span className="font-medium text-tremor-content-strong dark:text-dark-tremor-content-strong">
+                    {item.change}
+                  </span>
+                  <span
+                    className={classNames(
+                      item.changeType === "positive" &&
+                        "text-emerald-700 dark:text-emerald-500",
+                      item.changeType === "negative" &&
+                        "text-red-700 dark:text-red-500"
+                    )}
+                  >
+                    ({item.percentageChange})
+                  </span>
+                </dd>
+              )}
+            </div>
+            {chartData.length >= 2 && (
+              <SparkAreaChart
+                data={chartData}
+                index="date"
+                categories={[item.name]}
+                showGradient={false}
+                colors={sparkColor}
+                className="mt-4 h-10 w-full"
+              />
+            )}
+          </Card>
+        );
+      })}
+    </dl>
   );
 }

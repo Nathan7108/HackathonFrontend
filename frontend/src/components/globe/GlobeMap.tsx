@@ -13,6 +13,40 @@ const RISK_COLORS: Record<string, string> = {
   CRITICAL: "#991b1b",
 };
 
+function getMarkerClass(riskLevel: string): string {
+  const level = (riskLevel || "").toUpperCase();
+  if (level === "CRITICAL") return "marker-critical";
+  if (level === "HIGH") return "marker-high";
+  if (level === "ELEVATED") return "marker-elevated";
+  if (level === "MODERATE") return "marker-moderate";
+  return "marker-low";
+}
+
+function getMarkerSize(riskScore: number): number {
+  const minSize = 8;
+  const maxSize = 20;
+  return minSize + (riskScore / 100) * (maxSize - minSize);
+}
+
+function scoreToRiskLevel(score: number): string {
+  if (score >= 80) return "CRITICAL";
+  if (score >= 60) return "HIGH";
+  if (score >= 40) return "ELEVATED";
+  if (score >= 20) return "MODERATE";
+  return "LOW";
+}
+
+const CODE_TO_NAME: Record<string, string> = {
+  IQ: "Iraq", SY: "Syria", YE: "Yemen", SD: "Sudan", AF: "Afghanistan",
+  MM: "Myanmar", SO: "Somalia", LY: "Libya", NG: "Nigeria", CD: "DR Congo",
+  ML: "Mali", HT: "Haiti", CF: "Central African Republic", CN: "China",
+  RU: "Russia", KP: "North Korea", MX: "Mexico", SA: "Saudi Arabia",
+  AE: "UAE", KZ: "Kazakhstan", IR: "Iran", UA: "Ukraine", PK: "Pakistan",
+  ET: "Ethiopia", VE: "Venezuela", TW: "Taiwan", RS: "Serbia", BR: "Brazil",
+  IN: "India", US: "United States", DE: "Germany", GB: "United Kingdom",
+  JP: "Japan", AU: "Australia", CA: "Canada", FR: "France",
+};
+
 // Countries to show on choropleth with their risk color (25+ countries)
 const EXPANDED_RISK_FILL: Record<string, string> = {
   // Watchlist (8)
@@ -44,16 +78,6 @@ const COUNTRY_CENTERS: Record<string, [number, number]> = {
   JP: [139.7, 36.2], AU: [133.8, -25.3], CA: [-96.8, 56.1], FR: [2.2, 46.2],
 };
 
-const GEOJSON_PRIMARY = "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_countries.geojson";
-const GEOJSON_FALLBACK = "https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson";
-
-interface Props {
-  onCountrySelect: (code: string) => void;
-  selectedCode: string | null;
-  is3D?: boolean;
-  layers?: GlobeLayerState;
-}
-
 const RISK_SCORE_BY_CODE: Record<string, number> = {
   UA: 87, IR: 79, ET: 68, TW: 72, PK: 62, VE: 55, RS: 38, BR: 28,
   IQ: 77, SY: 88, YE: 83, SD: 81, AF: 64, MM: 61, LY: 58, SO: 60,
@@ -61,6 +85,42 @@ const RISK_SCORE_BY_CODE: Record<string, number> = {
   GB: 26, JP: 20, AU: 18, CA: 19, FR: 25,
   ML: 56, HT: 59, CF: 63, MX: 42, SA: 30, AE: 24, KZ: 29,
 };
+
+const GEOJSON_PRIMARY = "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_countries.geojson";
+const GEOJSON_FALLBACK = "https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson";
+
+type MarkerCountry = { code: string; name: string; longitude: number; latitude: number; riskScore: number; riskLevel: string };
+const MARKER_COUNTRIES: MarkerCountry[] = [
+  ...WATCHLIST_COUNTRIES.map((c) => ({
+    code: c.code,
+    name: c.name,
+    longitude: c.longitude,
+    latitude: c.latitude,
+    riskScore: c.riskScore,
+    riskLevel: c.riskLevel,
+  })),
+  ...(Object.keys(EXPANDED_RISK_FILL) as string[])
+    .filter((code) => !WATCHLIST_COUNTRIES.some((w) => w.code === code) && COUNTRY_CENTERS[code])
+    .map((code) => {
+      const score = RISK_SCORE_BY_CODE[code] ?? 50;
+      const [longitude, latitude] = COUNTRY_CENTERS[code];
+      return {
+        code,
+        name: CODE_TO_NAME[code] ?? code,
+        longitude,
+        latitude,
+        riskScore: score,
+        riskLevel: scoreToRiskLevel(score),
+      };
+    }),
+];
+
+interface Props {
+  onCountrySelect: (code: string) => void;
+  selectedCode: string | null;
+  is3D?: boolean;
+  layers?: GlobeLayerState;
+}
 
 const CONFLICT_EVENTS = [
   { lng: 37.8, lat: 48.0, intensity: 0.9, type: "battle" },
@@ -189,41 +249,13 @@ function GlobeMap({ onCountrySelect, selectedCode, is3D = false, layers }: Props
 
       const map = new gl.Map({
         container: mapContainer.current!,
-        style: "mapbox://styles/mapbox/light-v11",
+        style: "mapbox://styles/mapbox/dark-v11",
         center: [30, 25] as [number, number],
         zoom: 2,
         projection: "mercator" as any,
         attributionControl: false,
         pitchWithRotate: false,
         dragRotate: false,
-      });
-
-      // Softer, more realistic base — only set paint for layers that exist in this style
-      map.on("style.load", () => {
-        const style = map.getStyle();
-        const layerIds = new Set((style.layers ?? []).map((l: { id: string }) => l.id));
-
-        const safeSetPaint = (id: string, prop: string, value: unknown) => {
-          if (layerIds.has(id)) {
-            try {
-              map.setPaintProperty(id, prop as any, value);
-            } catch { /* layer type mismatch */ }
-          }
-        };
-
-        safeSetPaint("background", "background-color", "#e8e6e0");
-        safeSetPaint("land", "background-color", "#e2e0d9");
-        safeSetPaint("landcover", "fill-color", "#e2e0d9");
-        safeSetPaint("water", "fill-color", "#a8bed5");
-        safeSetPaint("waterway", "line-color", "#9cb4cc");
-
-        const labelLayers = (style.layers ?? []).filter(
-          (l: any) => l.id.includes("label") || l.id.includes("place")
-        );
-        labelLayers.forEach((l: any) => {
-          safeSetPaint(l.id, "text-color", "#6b7280");
-          safeSetPaint(l.id, "text-opacity", 0.65);
-        });
       });
 
       map.addControl(new gl.NavigationControl({ showCompass: false }), "bottom-right");
@@ -236,7 +268,7 @@ function GlobeMap({ onCountrySelect, selectedCode, is3D = false, layers }: Props
       });
 
       map.on("load", () => {
-        setupChoropleth(map, popup);
+        setupChoropleth(map, popup, gl);
       });
 
       mapRef.current = map;
@@ -306,7 +338,7 @@ function GlobeMap({ onCountrySelect, selectedCode, is3D = false, layers }: Props
     }
   }
 
-  function setupChoropleth(map: any, popup: any) {
+  function setupChoropleth(map: any, popup: any, mapboxgl: any) {
     const processGeo = (geo: GeoJSON.FeatureCollection) => {
       const data: GeoJSON.FeatureCollection = {
         type: "FeatureCollection",
@@ -364,6 +396,54 @@ function GlobeMap({ onCountrySelect, selectedCode, is3D = false, layers }: Props
         },
         filter: ["==", ["get", "_iso"], ""],
       });
+
+      // Risk heatmap layer (glowing threat field behind markers)
+      map.addSource("risk-heatmap", {
+        type: "geojson",
+        data: {
+          type: "FeatureCollection",
+          features: MARKER_COUNTRIES.map((c) => ({
+            type: "Feature" as const,
+            properties: { riskScore: c.riskScore },
+            geometry: { type: "Point" as const, coordinates: [c.longitude, c.latitude] },
+          })),
+        },
+      });
+      try {
+        map.addLayer(
+          {
+            id: "risk-heat",
+            type: "heatmap",
+            source: "risk-heatmap",
+            paint: {
+              "heatmap-weight": ["interpolate", ["linear"], ["get", "riskScore"], 0, 0, 100, 1],
+              "heatmap-intensity": ["interpolate", ["linear"], ["zoom"], 0, 0.6, 9, 2],
+              "heatmap-color": [
+                "interpolate",
+                ["linear"],
+                ["heatmap-density"],
+                0,
+                "rgba(0,0,0,0)",
+                0.2,
+                "rgba(245,158,11,0.15)",
+                0.4,
+                "rgba(249,115,22,0.25)",
+                0.6,
+                "rgba(239,68,68,0.35)",
+                0.8,
+                "rgba(220,38,38,0.45)",
+                1,
+                "rgba(185,28,28,0.55)",
+              ],
+              "heatmap-radius": ["interpolate", ["linear"], ["zoom"], 0, 30, 5, 50, 10, 80],
+              "heatmap-opacity": ["interpolate", ["linear"], ["zoom"], 0, 0.8, 7, 0.5, 12, 0.2],
+            },
+          },
+          "country-fill"
+        );
+      } catch {
+        /* style may not support heatmap or layer order */
+      }
 
       map.addSource("conflict-events", {
         type: "geojson",
@@ -534,6 +614,49 @@ function GlobeMap({ onCountrySelect, selectedCode, is3D = false, layers }: Props
       };
       pulseFrameRef.current = requestAnimationFrame(animatePulse);
 
+      // DOM markers for risk countries (pulsing dots with tooltips)
+      const markerPopup = new mapboxgl.Popup({
+        closeButton: false,
+        closeOnClick: false,
+        className: "sentinel-popup",
+        offset: 15,
+      });
+      MARKER_COUNTRIES.forEach((country) => {
+        const el = document.createElement("div");
+        el.className = getMarkerClass(country.riskLevel);
+        const size = getMarkerSize(country.riskScore);
+        el.style.width = `${size}px`;
+        el.style.height = `${size}px`;
+        el.style.animationDelay = `${Math.random() * 2}s`;
+        const marker = new mapboxgl.Marker({ element: el })
+          .setLngLat([country.longitude, country.latitude])
+          .addTo(map);
+        el.addEventListener("mouseenter", () => {
+          const color = RISK_COLORS[country.riskLevel] ?? "#94a3b8";
+          markerPopup
+            .setLngLat([country.longitude, country.latitude])
+            .setHTML(
+              `<div style="
+                background: rgba(9,9,11,0.95);
+                border: 1px solid #27272a;
+                border-radius: 8px;
+                padding: 8px 12px;
+                color: #fafafa;
+                font-size: 12px;
+                backdrop-filter: blur(8px);
+              ">
+                <div style="font-weight: 700; font-size: 13px;">${country.name}</div>
+                <div style="color: ${color}; font-weight: 600; margin-top: 2px;">
+                  ${country.riskScore} — ${country.riskLevel}
+                </div>
+              </div>`
+            )
+            .addTo(map);
+        });
+        el.addEventListener("mouseleave", () => markerPopup.remove());
+        el.addEventListener("click", () => onCountrySelectRef.current(country.code));
+      });
+
       layersReadyRef.current = true;
 
       // Apply any pending selection (set before layers were ready)
@@ -557,15 +680,12 @@ function GlobeMap({ onCountrySelect, selectedCode, is3D = false, layers }: Props
           lastCode = iso;
           const wl = WATCHLIST_COUNTRIES.find((c) => c.code === iso);
           let html: string;
+          const col = wl ? (RISK_COLORS[wl.riskLevel] ?? "#94a3b8") : "#94a3b8";
           if (wl) {
-            const col = RISK_COLORS[wl.riskLevel] ?? "#6b7280";
             html = `
-              <div style="font:600 12px Inter,system-ui,sans-serif;color:#111827">
-                ${wl.flag} ${wl.name}
-              </div>
-              <div style="font:500 11px Inter,system-ui,sans-serif;margin-top:3px">
-                <b style="color:${col}">${wl.riskScore}</b>
-                <span style="color:#9ca3af"> · ${wl.riskLevel}</span>
+              <div style="background:rgba(9,9,11,0.95);border:1px solid #27272a;border-radius:8px;padding:8px 12px;color:#fafafa;font-size:12px;backdrop-filter:blur(8px)">
+                <div style="font-weight:700;font-size:13px">${wl.flag} ${wl.name}</div>
+                <div style="color:${col};font-weight:600;margin-top:2px">${wl.riskScore} — ${wl.riskLevel}</div>
               </div>`;
           } else {
             const name =
@@ -575,10 +695,9 @@ function GlobeMap({ onCountrySelect, selectedCode, is3D = false, layers }: Props
               iso;
             const score = feat.properties?._score;
             html = `
-              <div style="font:600 12px Inter,system-ui,sans-serif;color:#111827">${name}</div>
-              <div style="font:500 11px Inter,system-ui,sans-serif;margin-top:3px">
-                <b style="color:#475569">${score ?? "--"}</b>
-                <span style="color:#9ca3af"> · MONITORED</span>
+              <div style="background:rgba(9,9,11,0.95);border:1px solid #27272a;border-radius:8px;padding:8px 12px;color:#fafafa;font-size:12px;backdrop-filter:blur(8px)">
+                <div style="font-weight:700;font-size:13px">${name}</div>
+                <div style="color:${col};font-weight:600;margin-top:2px">${score ?? "--"} — MONITORED</div>
               </div>`;
           }
           popup.setHTML(html);
@@ -619,7 +738,7 @@ function GlobeMap({ onCountrySelect, selectedCode, is3D = false, layers }: Props
   const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
   if (!token || token === "your_mapbox_token_here") {
     return (
-      <div className="absolute inset-0 flex items-center justify-center bg-slate-50">
+      <div className="absolute inset-0 flex items-center justify-center bg-zinc-900">
         <div className="text-center">
           <div className="text-sm font-semibold text-gray-400 mb-1">Mapbox token required</div>
           <div className="text-xs text-gray-300">Set NEXT_PUBLIC_MAPBOX_TOKEN in .env.local</div>
@@ -628,7 +747,7 @@ function GlobeMap({ onCountrySelect, selectedCode, is3D = false, layers }: Props
     );
   }
 
-  return <div ref={mapContainer} className="absolute inset-0 w-full h-full" />;
+  return <div ref={mapContainer} className="absolute inset-0 w-full h-full bg-zinc-900" />;
 }
 
 export default GlobeMap;

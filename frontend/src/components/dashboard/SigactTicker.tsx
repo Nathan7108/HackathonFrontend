@@ -21,12 +21,12 @@ export function SigactTicker() {
 
   return (
     <div
-      className="flex items-center overflow-hidden border-t border-gray-200 bg-gray-50 shrink-0"
+      className="flex items-center overflow-hidden border-t border-slate-300 bg-gray-50 shrink-0"
       style={{ height: 28 }}
     >
       {/* Label */}
       <div
-        className="flex items-center gap-1.5 px-2 shrink-0 border-r border-gray-200"
+        className="flex items-center gap-1.5 px-2 shrink-0 border-r border-slate-300"
         style={{ height: "100%" }}
       >
         <span className="relative flex h-2 w-2">

@@ -1,8 +1,13 @@
 import type {
   DashboardSummary,
+  DashboardKpis,
+  DashboardKpiHistory,
+  DashboardSubScores,
+  DashboardAlertsResponse,
   AnalyzeResult,
   ForecastResult,
   AnomalyResult,
+  RecentActivityResponse,
 } from "./types";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -23,6 +28,18 @@ export const api = {
   getDashboardSummary: () =>
     fetchJSON<DashboardSummary>("/api/dashboard/summary"),
 
+  getDashboardKpis: () =>
+    fetchJSON<DashboardKpis>("/api/dashboard/kpis"),
+
+  getDashboardKpiHistory: () =>
+    fetchJSON<DashboardKpiHistory>("/api/dashboard/kpis/history"),
+
+  getDashboardSubScores: () =>
+    fetchJSON<DashboardSubScores>("/api/dashboard/sub-scores"),
+
+  getDashboardAlerts: () =>
+    fetchJSON<DashboardAlertsResponse>("/api/dashboard/alerts"),
+
   getCountries: () =>
     fetchJSON<import("./types").CountryRisk[]>("/api/countries"),
 
@@ -40,6 +57,9 @@ export const api = {
 
   getAnomalies: () =>
     fetchJSON<AnomalyResult[]>("/api/anomalies"),
+
+  getRecentActivity: () =>
+    fetchJSON<RecentActivityResponse>("/api/recent-activity"),
 
   getTrackRecord: () =>
     fetchJSON<unknown[]>("/api/track-record"),

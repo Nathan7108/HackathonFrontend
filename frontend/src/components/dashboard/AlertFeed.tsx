@@ -1,28 +1,33 @@
 "use client";
 
-const MOCK_ALERTS = [
-  { time: "14:32", severity: "HIGH" as const,     type: "ANOMALY",    text: "Ukraine anomaly score exceeded 0.85 — HIGH severity",    country: "UA" },
-  { time: "13:15", severity: "HIGH" as const,     type: "ESCALATION", text: "Iran risk score crossed HIGH threshold (79)",             country: "IR" },
-  { time: "12:48", severity: "ELEVATED" as const, type: "THRESHOLD",  text: "Pakistan protest count 3σ above 90-day baseline",        country: "PK" },
-  { time: "11:22", severity: "ELEVATED" as const, type: "ANOMALY",    text: "Ethiopia GDELT tone shifted −2.1 in 24h window",         country: "ET" },
-  { time: "09:05", severity: "MODERATE" as const, type: "FORECAST",   text: "Taiwan 90d forecast crossed ELEVATED threshold",         country: "TW" },
-  { time: "08:30", severity: "HIGH" as const,     type: "ESCALATION", text: "Sudan fatality rate exceeded critical threshold",        country: "SD" },
-  { time: "06:12", severity: "MODERATE" as const, type: "THRESHOLD",  text: "Venezuela inflation indicator spiked +12% MoM",          country: "VE" },
-  { time: "02:45", severity: "LOW" as const,      type: "FORECAST",   text: "Brazil risk trajectory stable at LOW level",             country: "BR" },
-];
+import { useState } from "react";
+import { RiSearchLine } from "@remixicon/react";
+import { BarList, Card, Dialog, DialogPanel, TextInput } from "@tremor/react";
+import { useAlerts } from "@/lib/hooks/useAlerts";
+import type { DashboardAlert } from "@/lib/types";
 
-const SEV: Record<string, { bar: string; bg: string; text: string; badge: string }> = {
-  HIGH:     { bar: "#dc2626", bg: "#fff5f5", text: "#dc2626", badge: "#fecaca" },
-  ELEVATED: { bar: "#ea580c", bg: "#fff7ed", text: "#ea580c", badge: "#fed7aa" },
-  MODERATE: { bar: "#ca8a04", bg: "#fefce8", text: "#ca8a04", badge: "#fef08a" },
-  LOW:      { bar: "#22c55e", bg: "#f0fdf4", text: "#22c55e", badge: "#bbf7d0" },
-};
+function formatAlertTime(iso: string): string {
+  try {
+    const d = new Date(iso);
+    const h = d.getUTCHours();
+    const m = d.getUTCMinutes();
+    return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`;
+  } catch {
+    return "—";
+  }
+}
 
-const TYPE_COLOR: Record<string, string> = {
-  ANOMALY:    "#dc2626",
-  ESCALATION: "#ea580c",
-  THRESHOLD:  "#ca8a04",
-  FORECAST:   "#2563eb",
+function alertTypeToLabel(type: DashboardAlert["type"]): string {
+  if (type === "ANOMALY_DETECTED") return "ANOMALY";
+  if (type === "TIER_CHANGE" || type === "SCORE_SPIKE") return "ESCALATION";
+  return type;
+}
+
+const SEVERITY_WEIGHT: Record<string, number> = {
+  HIGH: 4,
+  ELEVATED: 3,
+  MODERATE: 2,
+  LOW: 1,
 };
 
 function LiveBadge() {
@@ -37,75 +42,140 @@ function LiveBadge() {
   );
 }
 
+/** BarList items: name = time + type + detail, value = severity weight. No per-item color (neutral bar like example). */
+function alertsToBarList(alerts: DashboardAlert[]) {
+  return alerts.map((a, i) => ({
+    key: `${a.code}-${a.type}-${i}`,
+    name: `${formatAlertTime(a.time)} · ${alertTypeToLabel(a.type)} · ${a.detail}`,
+    value: SEVERITY_WEIGHT[a.severity] ?? 2,
+  }));
+}
+
+const valueFormatter = (value: number) => {
+  const labels: Record<number, string> = {
+    1: "Low",
+    2: "Moderate",
+    3: "Elevated",
+    4: "High",
+  };
+  return labels[value] ?? String(value);
+};
+
 export function AlertFeed() {
-  const activeCount = MOCK_ALERTS.filter((a) => a.severity === "HIGH" || a.severity === "ELEVATED").length;
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const { data, loading, error } = useAlerts();
+  const alerts = data?.alerts ?? [];
+  const activeCount = alerts.filter(
+    (a) => a.severity === "HIGH" || a.severity === "ELEVATED"
+  ).length;
+
+  const allItems = alertsToBarList(alerts);
+  const filteredItems = searchQuery.trim()
+    ? allItems.filter((item) =>
+        item.name.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : allItems;
+  const topItems = allItems.slice(0, 5);
 
   return (
-    <div className="flex flex-col h-full bg-white rounded-md shadow-[0_1px_3px_rgba(0,0,0,0.06)] overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center justify-between px-3 py-1.5 border-b border-gray-100 shrink-0">
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">Alert Feed</span>
+    <>
+      <Card className="relative flex flex-col h-full min-h-0">
+        <div className="flex items-center gap-2 flex-wrap shrink-0">
+          <p className="text-tremor-default font-medium text-tremor-content-strong dark:text-dark-tremor-content-strong">
+            Alert Feed
+          </p>
           <LiveBadge />
-          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-50 text-red-600 font-medium tabular-nums">
+          <span className="text-xs px-1.5 py-0.5 rounded-full bg-red-50 text-red-600 font-medium tabular-nums">
             {activeCount} active
           </span>
         </div>
-      </div>
-
-      {/* Alerts — full-row color per severity */}
-      <div className="flex-1 overflow-y-auto min-h-0 scrollbar-thin">
-        {MOCK_ALERTS.map((alert, i) => {
-          const s = SEV[alert.severity];
-          const typeColor = TYPE_COLOR[alert.type];
-
-          return (
-            <div
-              key={i}
-              className="flex items-stretch border-b border-white/60"
-              style={{ background: s.bg, minHeight: 36 }}
-            >
-              {/* Left severity bar */}
-              <div className="w-1 shrink-0" style={{ background: s.bar }} />
-
-              {/* Content */}
-              <div className="flex items-center gap-2 px-2 flex-1 min-w-0 py-1">
-                {/* Time */}
-                <span
-                  className="text-[10px] font-mono shrink-0 tabular-nums"
-                  style={{ color: s.text, width: 32 }}
-                >
-                  {alert.time}
-                </span>
-
-                {/* Type pill */}
-                <span
-                  className="text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0"
-                  style={{ background: s.badge, color: typeColor }}
-                >
-                  {alert.type}
-                </span>
-
-                {/* Text */}
-                <span
-                  className="text-[11px] font-medium flex-1 truncate"
-                  style={{ color: "#374151" }}
-                >
-                  {alert.text}
-                </span>
-
-                {/* Country */}
-                <span
-                  className="text-[10px] font-bold shrink-0 px-1.5 py-0.5 rounded"
-                  style={{ background: s.badge, color: s.text }}
-                >
-                  {alert.country}
-                </span>
-              </div>
+        <p
+          className="text-tremor-metric font-semibold text-tremor-content-strong dark:text-dark-tremor-content-strong mt-1"
+          style={{ opacity: loading ? 0.7 : 1 }}
+        >
+          {alerts.length} alerts
+        </p>
+        {error && (
+          <p className="text-sm text-amber-600 mt-2">Alerts unavailable.</p>
+        )}
+        {!error && alerts.length > 0 && (
+          <>
+            <div className="mt-4 flex items-center justify-between shrink-0">
+              <p className="text-tremor-default font-medium text-tremor-content-strong dark:text-dark-tremor-content-strong">
+                Top 5 alerts
+              </p>
+              <p className="text-tremor-label font-medium uppercase text-tremor-content dark:text-dark-tremor-content">
+                Severity
+              </p>
             </div>
-          );
-        })}
-      </div>
-    </div>
+            <BarList
+              data={topItems}
+              valueFormatter={valueFormatter}
+              className="bar-list-thin mt-2 flex-1 min-h-0"
+            />
+          </>
+        )}
+        {!error && alerts.length === 0 && !loading && (
+          <p className="text-tremor-default text-tremor-content mt-2">
+            No escalation alerts.
+          </p>
+        )}
+        <div className="relative flex justify-center pt-2 pb-2 mt-auto">
+          <button
+            type="button"
+            className="flex items-center justify-center rounded-tremor-small border border-tremor-border bg-tremor-background px-2.5 py-2 text-tremor-default font-medium text-tremor-content-strong shadow-tremor-input hover:bg-tremor-background-muted dark:border-dark-tremor-border dark:bg-dark-tremor-background dark:text-dark-tremor-content-strong dark:shadow-dark-tremor-input hover:dark:bg-dark-tremor-background-muted"
+            onClick={() => setIsOpen(true)}
+          >
+            Show more
+          </button>
+        </div>
+      </Card>
+
+      <Dialog open={isOpen} onClose={() => setIsOpen(false)} static className="z-[100]">
+        <DialogPanel className="overflow-hidden p-0 max-w-lg">
+          <div className="px-6 pb-4 pt-6">
+            <TextInput
+              icon={RiSearchLine}
+              placeholder="Search alerts..."
+              className="rounded-tremor-small"
+              value={searchQuery}
+              onValueChange={setSearchQuery}
+            />
+            <div className="flex items-center justify-between pt-4">
+              <p className="text-tremor-default font-medium text-tremor-content-strong dark:text-dark-tremor-content-strong">
+                Alerts
+              </p>
+              <p className="text-tremor-label font-medium uppercase text-tremor-content dark:text-dark-tremor-content">
+                Severity
+              </p>
+            </div>
+          </div>
+          <div className="h-96 overflow-y-auto px-6">
+            {filteredItems.length > 0 ? (
+              <BarList
+                data={filteredItems}
+                valueFormatter={valueFormatter}
+                className="bar-list-thin"
+              />
+            ) : (
+              <p className="flex h-full items-center justify-center text-tremor-default text-tremor-content-strong dark:text-dark-tremor-content-strong">
+                No results.
+              </p>
+            )}
+          </div>
+          <div className="mt-4 border-t border-tremor-border bg-tremor-background-muted p-6 dark:border-dark-tremor-border dark:bg-dark-tremor-background">
+            <button
+              type="button"
+              className="flex w-full items-center justify-center rounded-tremor-small border border-tremor-border bg-tremor-background py-2 text-tremor-default font-medium text-tremor-content-strong shadow-tremor-input hover:bg-tremor-background-muted dark:border-dark-tremor-border dark:bg-dark-tremor-background dark:text-dark-tremor-content-strong dark:shadow-dark-tremor-input hover:dark:bg-dark-tremor-background-muted"
+              onClick={() => setIsOpen(false)}
+            >
+              Go back
+            </button>
+          </div>
+        </DialogPanel>
+      </Dialog>
+    </>
   );
 }

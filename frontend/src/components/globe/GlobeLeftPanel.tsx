@@ -5,29 +5,37 @@ import { TOP_ESCALATING, TOP_DEESCALATING } from "@/lib/dashboard-data";
 
 const RISK_COLORS: Record<string, string> = {
   LOW: "#22c55e",
-  MODERATE: "#eab308",
+  MODERATE: "#ca8a04",
   ELEVATED: "#ea580c",
-  HIGH: "#ef4444",
-  CRITICAL: "#991b1b",
+  HIGH: "#dc2626",
+  CRITICAL: "#b91c1c",
+};
+
+const BADGE_BG: Record<string, string> = {
+  LOW: "#dcfce7",
+  MODERATE: "#fef9c3",
+  ELEVATED: "#ffedd5",
+  HIGH: "#fee2e2",
+  CRITICAL: "#fecaca",
 };
 
 const LAYER_CONFIG = [
-  { key: "conflictZones", label: "Conflict Zones", color: "bg-red-500", count: 37 },
-  { key: "anomalyAlerts", label: "Anomaly Alerts", color: "bg-orange-500", count: 5 },
-  { key: "facilities", label: "Facilities", color: "bg-blue-500", count: 5 },
-  { key: "tradeRoutes", label: "Trade Routes", color: "bg-indigo-400", count: 3 },
-  { key: "infrastructure", label: "Infrastructure", color: "bg-gray-400", count: 0 },
-] as const;
+  { key: "conflictZones" as const, label: "Conflict Zones", status: "green" as const, count: 37 },
+  { key: "anomalyAlerts" as const, label: "Anomaly Alerts", status: "orange" as const, count: 5 },
+  { key: "facilities" as const, label: "Facilities", status: "green" as const, count: 5 },
+  { key: "tradeRoutes" as const, label: "Trade Routes", status: "orange" as const, count: 3 },
+  { key: "infrastructure" as const, label: "Infrastructure", status: "green" as const, count: 0 },
+];
 
-type LayerKey = (typeof LAYER_CONFIG)[number]["key"];
-
-export interface GlobeLayerState {
+export type GlobeLayerState = {
   conflictZones: boolean;
   anomalyAlerts: boolean;
   facilities: boolean;
   tradeRoutes: boolean;
   infrastructure: boolean;
-}
+};
+
+type LayerKey = keyof GlobeLayerState;
 
 interface Props {
   selectedCode: string | null;
@@ -40,18 +48,30 @@ const ACTIVE_COUNTRIES = WATCHLIST_COUNTRIES.filter(
   (c) => c.code !== "P1" && c.code !== "P2"
 ).sort((a, b) => b.riskScore - a.riskScore);
 
-const DELTAS: Record<string, number> = {
-  UA: 3, IR: 2, TW: 1, ET: -2, PK: 4, VE: 3, RS: -1, BR: 0,
-};
+function Sparkline({ data, color, className }: { data: number[]; color: string; className?: string }) {
+  if (!data.length) return null;
+  const w = 44;
+  const h = 14;
+  const min = Math.min(...data);
+  const max = Math.max(...data) || 1;
+  const range = max - min || 1;
+  const pts = data.map((v, i) => {
+    const x = (i / (data.length - 1)) * w;
+    const y = h - ((v - min) / range) * (h - 2) - 1;
+    return `${i === 0 ? "M" : "L"} ${x} ${y}`;
+  }).join(" ");
+  return (
+    <svg className={className} width={w} height={h} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
+      <path d={pts} fill="none" stroke={color} strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
 
-const DATA_SOURCES = [
-  { name: "GDELT", time: "2m" },
-  { name: "ACLED", time: "3d" },
-  { name: "UCDP", time: "7d" },
-  { name: "W.Bank", time: "30d" },
-  { name: "NewsAPI", time: "5m" },
-  { name: "OCHA", time: "1d" },
-];
+function watchlistSparkData(score: number): number[] {
+  return [score - 8, score - 5, score - 3, score - 1, score - 2, score + 1, score].map((v) =>
+    Math.max(0, Math.min(100, v))
+  );
+}
 
 export function GlobeLeftPanel({
   selectedCode,
@@ -63,127 +83,127 @@ export function GlobeLeftPanel({
     onLayersChange({ ...layers, [key]: !layers[key] });
 
   return (
-    <div className="w-[236px] h-full flex-shrink-0 bg-white border-r border-gray-200 flex flex-col overflow-hidden">
-      {/* ── Section 1: Watchlist (top) ─────────────────────────────── */}
-      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin border-b border-gray-100">
-        <div className="px-8 pt-4.5 pb-3.5 shrink-0">
-          <h3 className="text-[13px] font-semibold text-slate-800 tracking-[0.01em]">
-            Watchlist
-          </h3>
-          <span className="text-[12px] text-slate-600 mt-1 block font-medium">{ACTIVE_COUNTRIES.length} countries</span>
+    <div className="w-[300px] min-w-[300px] h-full flex-shrink-0 bg-white border-r border-slate-200 flex flex-col overflow-hidden">
+      {/* Scrollable body: Watchlist + Movers + Map Layers */}
+      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin">
+        {/* ── Header ───────────────────────────────────────────────── */}
+        <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-slate-200">
+          <h3 className="text-[15px] font-bold text-slate-800 tracking-tight">Watchlist</h3>
+          <div className="flex items-center gap-1">
+            <button type="button" className="p-1.5 rounded-md hover:bg-slate-100 text-slate-600" aria-label="Add">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+            </button>
+            <button type="button" className="p-1.5 rounded-md hover:bg-slate-100 text-slate-600" aria-label="More">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <circle cx="12" cy="6" r="1.5" />
+                <circle cx="12" cy="12" r="1.5" />
+                <circle cx="12" cy="18" r="1.5" />
+              </svg>
+            </button>
+          </div>
         </div>
 
-        <div className="px-8 py-2">
+        {/* ── Watchlist table ─────────────────────────────────────── */}
+        <div className="px-4 py-3">
+          <div className="grid grid-cols-[auto_1fr_1fr_auto_auto_44px] gap-x-2 gap-y-0 items-center text-slate-500 text-[11px] font-semibold uppercase tracking-wider border-b border-slate-200 pb-2 mb-2">
+            <span className="col-span-2">Country</span>
+            <span>Name</span>
+            <span>Risk score</span>
+            <span />
+            <span />
+          </div>
           {ACTIVE_COUNTRIES.map((country) => {
             const color = RISK_COLORS[country.riskLevel];
             const isSelected = selectedCode === country.code;
-            const delta = DELTAS[country.code] ?? 0;
-
+            const badgeBg = BADGE_BG[country.riskLevel] ?? BADGE_BG.MODERATE;
             return (
               <div
                 key={country.code}
                 onClick={() => onCountrySelect(country.code)}
-                className="flex items-center gap-1.5 px-4 py-2 cursor-pointer transition-colors border-l-2 rounded-md overflow-hidden"
-                style={{
-                  borderLeftColor: isSelected ? "#2563eb" : "transparent",
-                  background: isSelected ? "#eff6ff" : undefined,
-                }}
-                onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = "#f9fafb"; }}
-                onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = ""; }}
+                className="grid grid-cols-[auto_1fr_1fr_auto_auto_44px] gap-x-2 gap-y-1 items-center py-2.5 px-0 cursor-pointer transition-colors border-b border-slate-100 hover:bg-slate-50 rounded-md -mx-1 px-1"
+                style={{ background: isSelected ? "#eff6ff" : undefined }}
               >
-                <span className="text-sm leading-none shrink-0">{country.flag}</span>
-                <span
-                  className="text-[13px] flex-1 truncate"
-                  style={{ color: "#374151", fontWeight: isSelected ? 600 : 400, maxWidth: 72 }}
-                >
-                  {country.name}
-                </span>
-                <span
-                  className="text-[12px] font-mono font-bold shrink-0 tabular-nums w-5 text-right"
-                  style={{ color }}
-                >
+                <span className="text-base leading-none">{country.flag}</span>
+                <span className="text-[13px] font-medium text-slate-800">{country.code}</span>
+                <span className="text-[13px] text-slate-800 truncate" title={country.name}>{country.name}</span>
+                <span className="text-[13px] font-bold tabular-nums" style={{ color }}>
                   {country.riskScore}
                 </span>
                 <span
-                  className="text-[11px] font-mono shrink-0 w-4 text-right"
-                  style={{ color: delta > 0 ? "#dc2626" : delta < 0 ? "#16a34a" : "#9ca3af" }}
+                  className="text-[10px] font-bold px-1.5 py-0.5 rounded uppercase"
+                  style={{ backgroundColor: badgeBg, color }}
                 >
-                  {delta > 0 ? `▲${delta}` : delta < 0 ? `▼${Math.abs(delta)}` : "▽0"}
+                  {country.riskLevel}
                 </span>
-                <div className="w-[34px] h-2 bg-gray-100 rounded-full overflow-hidden shrink-0">
-                  <div
-                    className="h-full rounded-full"
-                    style={{ width: `${country.riskScore}%`, background: color }}
-                  />
-                </div>
-                {country.anomaly.detected && (
-                  <span className="text-xs text-orange-500 shrink-0">⚠</span>
-                )}
+                <Sparkline data={watchlistSparkData(country.riskScore)} color={color} className="shrink-0" />
               </div>
             );
           })}
         </div>
 
-        <div className="px-8 py-4 border-t border-gray-100 mt-1">
-          <p className="text-[13px] font-semibold text-slate-800 tracking-[0.01em] mb-1.5">Movers</p>
-          <div className="text-[12px] leading-5">
-            {TOP_ESCALATING.slice(0, 3).map((m, i) => (
-              <span key={m.country}>
-                {i > 0 && <span className="text-gray-300 mx-0.5">·</span>}
-                <span className="text-red-500 font-medium">▲ {m.country} +{m.delta}</span>
-              </span>
+        {/* ── Movers ───────────────────────────────────────────────── */}
+        <div className="px-4 py-3 border-t border-slate-200">
+          <h3 className="text-[15px] font-bold text-slate-800 tracking-tight mb-2">Movers</h3>
+          <div className="space-y-2">
+            {TOP_ESCALATING.slice(0, 3).map((m) => (
+              <div key={m.country} className="flex items-center gap-2 py-2 border-b border-slate-100 last:border-0">
+                <span className="text-red-500 shrink-0" aria-hidden>▲</span>
+                <span className="text-[13px] text-slate-800">Risk shift</span>
+                <span className="text-[13px] font-bold text-red-600 tabular-nums">+{m.delta}</span>
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-100 text-red-700 uppercase">High</span>
+                <Sparkline data={[60, 62, 65, 68, 72, 75, 75 + m.delta]} color="#dc2626" className="shrink-0 ml-auto" />
+              </div>
             ))}
-          </div>
-          <div className="text-[12px] leading-5">
-            {TOP_DEESCALATING.slice(0, 3).map((m, i) => (
-              <span key={m.country}>
-                {i > 0 && <span className="text-gray-300 mx-0.5">·</span>}
-                <span className="text-green-500 font-medium">▼ {m.country} {m.delta}</span>
-              </span>
+            {TOP_DEESCALATING.slice(0, 2).map((m) => (
+              <div key={m.country} className="flex items-center gap-2 py-2 border-b border-slate-100 last:border-0">
+                <span className="text-green-500 shrink-0" aria-hidden>▼</span>
+                <span className="text-[13px] text-slate-800">Risk shift</span>
+                <span className="text-[13px] font-bold text-green-600 tabular-nums">{m.delta}</span>
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-green-100 text-green-700 uppercase">High</span>
+                <Sparkline data={[70, 68, 65, 62, 60, 58, 60 + m.delta]} color="#16a34a" className="shrink-0 ml-auto" />
+              </div>
             ))}
           </div>
         </div>
-      </div>
 
-      {/* ── Section 2: Layers ─────────────────────────────────────── */}
-      <div className="shrink-0 px-8 pt-4.5 pb-4 border-b border-gray-100">
-        <h3 className="text-[13px] font-semibold text-slate-800 tracking-[0.01em]">
-          Map layers
-        </h3>
-        <div className="mt-2 space-y-1.5">
-          {LAYER_CONFIG.map(({ key, label, color, count }) => (
-            <label
-              key={key}
-              className="flex items-center gap-2 py-1.5 cursor-pointer hover:bg-gray-50 px-3 rounded-md"
-            >
-              <input
-                type="checkbox"
-                checked={layers[key]}
-                onChange={() => toggleLayer(key)}
-                className="h-4 w-4 rounded border-gray-300 cursor-pointer"
-                style={{ accentColor: "#2563eb" }}
-              />
-              <span className={`h-2 w-2 rounded-full shrink-0 ${color}`} />
-              <span className="text-sm text-gray-700 flex-1">{label}</span>
-              <span className="text-xs font-mono text-gray-500">{count}</span>
-            </label>
-          ))}
-        </div>
-      </div>
-
-      {/* ── Section 3: Data sources (footer) ───────────────────────── */}
-      <div className="shrink-0 px-8 py-4 bg-gray-50">
-        <h3 className="text-[13px] font-semibold text-slate-800 tracking-[0.01em] mb-1.5">
-          Sources
-        </h3>
-        <div className="grid grid-cols-3 gap-x-2 gap-y-1.5">
-          {DATA_SOURCES.map((s) => (
-            <div key={s.name} className="flex items-center gap-1">
-              <span className="h-2 w-2 rounded-full bg-green-500 shrink-0" />
-              <span className="text-[12px] text-gray-600 truncate">{s.name}</span>
-              <span className="text-[11px] font-mono text-gray-500 ml-auto">{s.time}</span>
-            </div>
-          ))}
+        {/* ── Map Layers ───────────────────────────────────────────── */}
+        <div className="px-4 py-3 border-t border-slate-200">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-[15px] font-bold text-slate-800 tracking-tight">Map Layers</h3>
+            <button type="button" className="p-1 rounded-md hover:bg-slate-100 text-slate-600" aria-label="Layers options">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <circle cx="12" cy="6" r="1.5" />
+                <circle cx="12" cy="12" r="1.5" />
+                <circle cx="12" cy="18" r="1.5" />
+              </svg>
+            </button>
+          </div>
+          <div className="space-y-1">
+            {LAYER_CONFIG.map(({ key, label, status }) => (
+              <label
+                key={key}
+                className="flex items-center gap-2 py-2 px-1 rounded-md hover:bg-slate-50 cursor-pointer border-b border-slate-100 last:border-0"
+              >
+                <input
+                  type="checkbox"
+                  checked={layers[key]}
+                  onChange={() => toggleLayer(key)}
+                  className="h-4 w-4 rounded border-slate-300 text-slate-700 focus:ring-slate-500"
+                />
+                <span className="text-[13px] font-medium text-slate-800 flex-1">{label}</span>
+                <span className="text-[11px] text-slate-500">Status</span>
+                <span
+                  className="h-2 w-2 rounded-full shrink-0"
+                  style={{
+                    backgroundColor: status === "green" ? "#22c55e" : "#ea580c",
+                  }}
+                />
+              </label>
+            ))}
+          </div>
         </div>
       </div>
     </div>

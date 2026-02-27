@@ -1,15 +1,17 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { WATCHLIST_COUNTRIES } from "@/lib/placeholder-data";
 import {
   TOP_ESCALATING,
   TOP_DEESCALATING,
   SENTIMENT_TREND_30D,
-  REGIONAL_BREAKDOWN,
-  RISK_DISTRIBUTION,
   MODEL_PERFORMANCE,
 } from "@/lib/dashboard-data";
+import { useDashboardData } from "@/lib/hooks/useDashboardData";
 import { Sparkline } from "@/components/dashboard/Sparkline";
+import { api } from "@/lib/api";
+import type { RecentActivityItem } from "@/lib/types";
 
 const ACTIVE_COUNTRIES = WATCHLIST_COUNTRIES.filter(
   (c) => c.code !== "P1" && c.code !== "P2"
@@ -37,23 +39,6 @@ const TIER_COLORS: Record<string, string> = {
 
 const SEVERITY_ABBR: Record<string, string> = { HIGH: "HIGH", MED: "ELV", LOW: "MOD" };
 
-const RECENT_EVENTS = [
-  { time: "2m", icon: "🔴", text: "Artillery strikes near Zaporizhzhia", country: "UA", type: "BATTLE" },
-  { time: "8m", icon: "🔴", text: "IRGC naval exercises, Strait of Hormuz", country: "IR", type: "MILITARY" },
-  { time: "14m", icon: "🟠", text: "Opposition rally in Islamabad, 50k", country: "PK", type: "PROTEST" },
-  { time: "23m", icon: "🔴", text: "RSF advances on El Fasher", country: "SD", type: "BATTLE" },
-  { time: "31m", icon: "🟡", text: "PLA aircraft enter Taiwan ADIZ", country: "TW", type: "MILITARY" },
-  { time: "45m", icon: "🟠", text: "Armed clashes in Amhara region", country: "ET", type: "BATTLE" },
-  { time: "1h", icon: "🟡", text: "Inflation data release, Caracas", country: "VE", type: "ECONOMIC" },
-  { time: "2h", icon: "🟢", text: "Ceasefire talks resume, Jeddah", country: "YE", type: "DIPLOMATIC" },
-  { time: "3h", icon: "🟠", text: "Boko Haram attack in Borno state", country: "NG", type: "BATTLE" },
-  { time: "4h", icon: "🟢", text: "EU sanctions package announced", country: "EU", type: "DIPLOMATIC" },
-  { time: "5h", icon: "🔴", text: "Drone strike on Kherson oblast", country: "UA", type: "BATTLE" },
-  { time: "6h", icon: "🟠", text: "Anti-government protest in Yangon", country: "MM", type: "PROTEST" },
-  { time: "7h", icon: "🟡", text: "Oil tanker detained near Hormuz", country: "IR", type: "MARITIME" },
-  { time: "8h", icon: "🟢", text: "Humanitarian corridor opened, Darfur", country: "SD", type: "HUMANITARIAN" },
-];
-
 const sentimentLast7 = SENTIMENT_TREND_30D.slice(-7).map((d) => d.escalatory);
 const sentimentLast30 = SENTIMENT_TREND_30D.map((d) => d.escalatory);
 const latestSentiment = SENTIMENT_TREND_30D[SENTIMENT_TREND_30D.length - 1];
@@ -69,7 +54,80 @@ interface Props {
   onCountrySelect: (code: string) => void;
 }
 
+const REGION_ABBR: Record<string, string> = {
+  "Middle East": "Mid. East",
+  "Sub-Saharan Africa": "Sub-Sahara",
+  "South Asia": "S. Asia",
+  "East Asia": "E. Asia",
+  "Europe": "Europe",
+  "Latin America": "Lat. Am.",
+  "Americas": "Americas",
+  "Africa": "Africa",
+  "Asia": "Asia",
+  "Other": "Other",
+};
+
+const RISK_TIER_ORDER = ["CRITICAL", "HIGH", "ELEVATED", "MODERATE", "LOW"] as const;
+
+const ACTIVITY_TYPE_LABELS: Record<string, string> = {
+  ALL: "All",
+  MILITARY: "Military",
+  ECONOMIC: "Economic",
+  DIPLOMATIC: "Diplomatic",
+  HUMANITARIAN: "Humanitarian",
+  PROTEST: "Protest",
+  BATTLE: "Battle",
+  NEWS: "News",
+};
+
 export function GlobeBottomPanel({ onCountrySelect }: Props) {
+  const [recentActivity, setRecentActivity] = useState<RecentActivityItem[]>([]);
+  const [activityLoading, setActivityLoading] = useState(true);
+  const [activityError, setActivityError] = useState<string | null>(null);
+  const [activityTypeFilter, setActivityTypeFilter] = useState<string>("ALL");
+  const [activitySortBy, setActivitySortBy] = useState<"newest" | "type">("newest");
+  const { data: dashboardData, loading: kpisLoading } = useDashboardData();
+  const riskDistribution = dashboardData.kpis.riskDistribution ?? { distribution: {}, totalCountries: 0, recentChanges: [] };
+  const regionalBreakdown = dashboardData.kpis.regionalBreakdown ?? [];
+
+  useEffect(() => {
+    let cancelled = false;
+    setActivityLoading(true);
+    setActivityError(null);
+    api
+      .getRecentActivity()
+      .then((res) => {
+        if (cancelled) return;
+        setRecentActivity(res.items);
+        if (res.error === "apiKeyInvalid") {
+          setActivityError("NewsAPI key invalid. Get a free key at newsapi.org and set NEWS_API in .env");
+        } else if (res.error === "noApiKey") {
+          setActivityError("Set NEWS_API in backend .env (get a free key at newsapi.org)");
+        } else if (res.error) {
+          setActivityError("Could not load activity. Check backend logs.");
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) setActivityError(err instanceof Error ? err.message : "Failed to load activity");
+      })
+      .finally(() => {
+        if (!cancelled) setActivityLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  const typeOrder = ["ALL", "MILITARY", "ECONOMIC", "DIPLOMATIC", "HUMANITARIAN", "PROTEST", "BATTLE", "NEWS"];
+  const seenTypes = new Set(recentActivity.map((e) => e.type).filter(Boolean));
+  const activityTypes = typeOrder.filter((t) => t === "ALL" || seenTypes.has(t));
+
+  const filteredActivity = activityTypeFilter === "ALL"
+    ? recentActivity
+    : recentActivity.filter((e) => e.type === activityTypeFilter);
+  const sortedActivity =
+    activitySortBy === "type"
+      ? [...filteredActivity].sort((a, b) => a.type.localeCompare(b.type))
+      : filteredActivity;
+
   return (
     <div className="bg-white px-6 py-8 min-h-[520px] shrink-0">
       <div className="mb-4">
@@ -80,8 +138,8 @@ export function GlobeBottomPanel({ onCountrySelect }: Props) {
       </div>
       <div className="grid grid-cols-12 gap-4">
         {/* ── Col 1: Recent Activity Feed (4 cols) ─────────────────── */}
-        <div className="col-span-4 border border-gray-200 rounded-xl overflow-hidden min-h-[380px]">
-          <div className="flex items-center gap-2 px-4 py-3 bg-gray-50 border-b border-gray-200">
+        <div className="col-span-4 border border-slate-300 rounded-xl overflow-hidden min-h-[420px] flex flex-col">
+          <div className="flex items-center gap-2 px-4 py-3 bg-gray-50 border-b border-slate-300 shrink-0">
             <span className="text-[11px] font-bold uppercase tracking-widest text-gray-500">
               Recent Activity
             </span>
@@ -90,14 +148,68 @@ export function GlobeBottomPanel({ onCountrySelect }: Props) {
               LIVE
             </span>
           </div>
-          <div className="max-h-[420px] overflow-y-auto scrollbar-thin">
-            {RECENT_EVENTS.map((e, i) => (
-              <div key={i} className="flex items-center gap-2 px-4 py-2.5 hover:bg-gray-50 text-[13px] border-b border-gray-100 last:border-0">
-                <span className="font-mono text-gray-400 w-8 shrink-0 text-right text-xs">{e.time}</span>
-                <span className="shrink-0 text-base">{e.icon}</span>
-                <span className="text-gray-700 flex-1 truncate">{e.text}</span>
-                <span className="text-[11px] font-mono text-gray-500 bg-gray-100 rounded px-1.5 py-0.5 shrink-0">{e.type}</span>
-                <span className="font-mono text-gray-400 shrink-0 text-xs">{e.country}</span>
+          {/* Filter by type + Sort */}
+          <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 bg-gray-50/80 border-b border-slate-200 shrink-0">
+            <div className="flex flex-wrap gap-1.5">
+              {activityTypes.map((type) => (
+                <button
+                  key={type}
+                  type="button"
+                  onClick={() => setActivityTypeFilter(type)}
+                  className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                    activityTypeFilter === type
+                      ? "bg-slate-700 text-white"
+                      : "bg-white border border-slate-300 text-gray-600 hover:bg-slate-100"
+                  }`}
+                >
+                  {ACTIVITY_TYPE_LABELS[type] ?? type}
+                </button>
+              ))}
+            </div>
+            <select
+              value={activitySortBy}
+              onChange={(ev) => setActivitySortBy(ev.target.value as "newest" | "type")}
+              className="ml-auto text-xs font-medium text-gray-600 bg-white border border-slate-300 rounded-md px-2 py-1 cursor-pointer"
+            >
+              <option value="newest">Newest first</option>
+              <option value="type">Sort by category</option>
+            </select>
+          </div>
+          <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin">
+            {activityLoading && (
+              <div className="px-4 py-8 text-center text-sm text-gray-500">Loading recent activity…</div>
+            )}
+            {activityError && (
+              <div className="px-4 py-6 text-center text-sm text-amber-600">
+                {activityError}
+              </div>
+            )}
+            {!activityLoading && !activityError && recentActivity.length === 0 && (
+              <div className="px-4 py-8 text-center text-sm text-gray-500">No recent activity</div>
+            )}
+            {!activityLoading && !activityError && sortedActivity.length === 0 && recentActivity.length > 0 && (
+              <div className="px-4 py-8 text-center text-sm text-gray-500">No items in this category</div>
+            )}
+            {!activityLoading && !activityError && sortedActivity.map((e, i) => (
+              <div
+                key={i}
+                className="px-4 py-3 hover:bg-gray-50 border-b border-slate-200 last:border-0 transition-colors"
+              >
+                <div className="flex items-start gap-2">
+                  <span className="font-mono text-gray-400 w-9 shrink-0 text-right text-xs pt-0.5">{e.time}</span>
+                  <span className="shrink-0 text-base pt-0.5">{e.icon}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-gray-800 text-sm leading-snug line-clamp-3">{e.text}</p>
+                    <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                      <span className="text-[11px] font-medium text-gray-500 bg-gray-100 rounded px-1.5 py-0.5 shrink-0">
+                        {e.type}
+                      </span>
+                      {e.country !== "—" && (
+                        <span className="font-mono text-gray-400 text-xs">{e.country}</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
             ))}
           </div>
@@ -106,8 +218,8 @@ export function GlobeBottomPanel({ onCountrySelect }: Props) {
         {/* ── Col 2: Anomalies + Escalation (3 cols) ───────────────── */}
         <div className="col-span-3 flex flex-col gap-4">
           {/* Anomalies */}
-          <div className="border border-gray-200 rounded-xl overflow-hidden min-h-[200px] flex-1">
-            <div className="flex items-center gap-2 px-4 py-3 bg-gray-50 border-b border-gray-200">
+          <div className="border border-slate-300 rounded-xl overflow-hidden min-h-[200px] flex-1">
+            <div className="flex items-center gap-2 px-4 py-3 bg-gray-50 border-b border-slate-300">
               <span className="text-[11px] font-bold uppercase tracking-widest text-gray-500">
                 Anomaly Alerts
               </span>
@@ -150,8 +262,8 @@ export function GlobeBottomPanel({ onCountrySelect }: Props) {
           </div>
 
           {/* Escalation Movers */}
-          <div className="border border-gray-200 rounded-xl overflow-hidden min-h-[180px]">
-            <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
+          <div className="border border-slate-300 rounded-xl overflow-hidden min-h-[180px]">
+            <div className="px-4 py-3 bg-gray-50 border-b border-slate-300">
               <span className="text-[11px] font-bold uppercase tracking-widest text-gray-500">
                 Escalation Movers
               </span>
@@ -164,7 +276,7 @@ export function GlobeBottomPanel({ onCountrySelect }: Props) {
                   <span className="text-red-500 font-mono font-semibold">+{m.delta}</span>
                 </div>
               ))}
-              <div className="border-t border-gray-200 my-2" />
+              <div className="border-t border-slate-300 my-2" />
               {TOP_DEESCALATING.map((m) => (
                 <div key={m.country} className="flex items-center gap-2 text-[13px]">
                   <span className="text-green-500 font-medium shrink-0">▼</span>
@@ -179,8 +291,8 @@ export function GlobeBottomPanel({ onCountrySelect }: Props) {
         {/* ── Col 3: Sentiment + Regional (3 cols) ─────────────────── */}
         <div className="col-span-3 flex flex-col gap-4">
           {/* Global Sentiment */}
-          <div className="border border-gray-200 rounded-xl overflow-hidden min-h-[180px]">
-            <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
+          <div className="border border-slate-300 rounded-xl overflow-hidden min-h-[180px]">
+            <div className="px-4 py-3 bg-gray-50 border-b border-slate-300">
               <span className="text-[11px] font-bold uppercase tracking-widest text-gray-500">
                 Global Sentiment
               </span>
@@ -209,21 +321,28 @@ export function GlobeBottomPanel({ onCountrySelect }: Props) {
           </div>
 
           {/* Regional Breakdown */}
-          <div className="border border-gray-200 rounded-xl overflow-hidden flex-1 min-h-[220px]">
-            <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
+          <div className="border border-slate-300 rounded-xl overflow-hidden flex-1 min-h-[220px]">
+            <div className="px-4 py-3 bg-gray-50 border-b border-slate-300">
               <span className="text-[11px] font-bold uppercase tracking-widest text-gray-500">
                 Regional Breakdown
               </span>
             </div>
             <div className="px-4 py-3 space-y-2.5">
-              {REGIONAL_BREAKDOWN.map((r) => {
+              {kpisLoading && (
+                <div className="py-4 text-center text-sm text-gray-500">Loading…</div>
+              )}
+              {!kpisLoading && regionalBreakdown.length === 0 && (
+                <div className="py-4 text-center text-sm text-gray-500">No regional data</div>
+              )}
+              {!kpisLoading && regionalBreakdown.map((r) => {
                 const barColor =
                   r.avgRisk >= 65 ? "#ef4444" :
                   r.avgRisk >= 50 ? "#ea580c" :
                   r.avgRisk >= 40 ? "#eab308" : "#22c55e";
+                const label = REGION_ABBR[r.region] ?? r.region;
                 return (
                   <div key={r.region} className="flex items-center gap-2 text-[13px]">
-                    <span className="text-gray-600 w-[120px] truncate shrink-0">{r.region}</span>
+                    <span className="text-gray-600 w-[120px] truncate shrink-0">{label}</span>
                     <div className="flex-1 h-2.5 bg-gray-100 rounded-full overflow-hidden">
                       <div className="h-full rounded-full" style={{ width: `${r.avgRisk}%`, background: barColor }} />
                     </div>
@@ -241,38 +360,49 @@ export function GlobeBottomPanel({ onCountrySelect }: Props) {
         {/* ── Col 4: Risk Distribution + Model Health (2 cols) ──────── */}
         <div className="col-span-2 flex flex-col gap-4">
           {/* Risk Distribution */}
-          <div className="border border-gray-200 rounded-xl overflow-hidden min-h-[180px]">
-            <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
+          <div className="border border-slate-300 rounded-xl overflow-hidden min-h-[180px]">
+            <div className="px-4 py-3 bg-gray-50 border-b border-slate-300">
               <span className="text-[11px] font-bold uppercase tracking-widest text-gray-500">
                 Risk Distribution
               </span>
             </div>
             <div className="px-4 py-3 space-y-2">
-              {RISK_DISTRIBUTION.map((r) => (
-                <div key={r.tier} className="flex items-center gap-2 text-[13px]">
-                  <div
-                    className="w-3 h-3 rounded-sm shrink-0"
-                    style={{ background: TIER_COLORS[r.tier] ?? "#94a3b8" }}
-                  />
-                  <span className="text-gray-500 w-16 shrink-0">{r.tier}</span>
-                  <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+              {kpisLoading && (
+                <div className="py-4 text-center text-sm text-gray-500">Loading…</div>
+              )}
+              {!kpisLoading && riskDistribution.totalCountries === 0 && (
+                <div className="py-4 text-center text-sm text-gray-500">No data</div>
+              )}
+              {!kpisLoading && riskDistribution.totalCountries > 0 && RISK_TIER_ORDER.map((tier) => {
+                const count = riskDistribution.distribution[tier] ?? 0;
+                const maxCount = Math.max(...RISK_TIER_ORDER.map((t) => riskDistribution.distribution[t] ?? 0), 1);
+                const barPct = Math.min((count / maxCount) * 100, 100);
+                return (
+                  <div key={tier} className="flex items-center gap-2 text-[13px]">
                     <div
-                      className="h-full rounded-full"
-                      style={{
-                        width: `${Math.min(r.count / 1.2, 100)}%`,
-                        background: TIER_COLORS[r.tier] ?? "#94a3b8",
-                      }}
+                      className="w-3 h-3 rounded-sm shrink-0"
+                      style={{ background: TIER_COLORS[tier] ?? "#94a3b8" }}
                     />
+                    <span className="text-gray-500 w-16 shrink-0">{tier}</span>
+                    <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full"
+                        style={{
+                          width: `${barPct}%`,
+                          background: TIER_COLORS[tier] ?? "#94a3b8",
+                        }}
+                      />
+                    </div>
+                    <span className="font-mono text-gray-500 w-6 text-right shrink-0">{count}</span>
                   </div>
-                  <span className="font-mono text-gray-500 w-6 text-right shrink-0">{r.count}</span>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
           {/* Model Health */}
-          <div className="border border-gray-200 rounded-xl overflow-hidden flex-1 min-h-[200px]">
-            <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
+          <div className="border border-slate-300 rounded-xl overflow-hidden flex-1 min-h-[200px]">
+            <div className="px-4 py-3 bg-gray-50 border-b border-slate-300">
               <span className="text-[11px] font-bold uppercase tracking-widest text-gray-500">
                 Model Health
               </span>
